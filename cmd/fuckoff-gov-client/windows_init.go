@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
 	"image/color"
 	"io"
 	"net/url"
-	"os"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -118,7 +119,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 	})
 	blockButton.Importance = widget.DangerImportance
 
-	favoriteButton := widget.NewButtonWithIcon("Favorite chat", theme.CancelIcon(), func() {
+	favoriteButton := widget.NewButtonWithIcon("Favorite chat", theme.ConfirmIcon(), func() {
 		dialog.ShowConfirm(
 			"Chat to favorite...",
 			"Are you sure you want set this chat to favorite list?",
@@ -556,26 +557,24 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					return
 				}
 
-				filepath := reader.URI().Path()
-				fileInfo, err := os.Stat(filepath)
-				if err != nil {
-					dialog.ShowError(err, w)
-					return
-				}
-
-				fileSize := fileInfo.Size()
-				if fileSize > consts.MaxMessageSize {
-					dialog.ShowError(fmt.Errorf("file size > max(%d)", consts.MaxMessageSize), w)
-					return
-				}
-
 				content, err := io.ReadAll(reader)
 				if err != nil {
 					dialog.ShowError(err, w)
 					return
 				}
 
-				pushMessage(ctx, currentChatChannel, filename, content)
+				comptessedContent, err := compressBytes(content)
+				if err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+
+				if len(comptessedContent) > consts.MaxMessageSize {
+					dialog.ShowError(fmt.Errorf("file size > max(%d)", consts.MaxMessageSize), w)
+					return
+				}
+
+				pushMessage(ctx, currentChatChannel, filename, comptessedContent)
 				inputMessageEntry.SetText("")
 				w.Canvas().Focus(inputMessageEntry)
 			},
@@ -801,4 +800,30 @@ func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
 
 func cutHash384(pkHash string) string {
 	return fmt.Sprintf("%s...%s", pkHash[:12], pkHash[len(pkHash)-12:])
+}
+
+func compressBytes(data []byte) ([]byte, error) {
+	var b bytes.Buffer
+	zw := gzip.NewWriter(&b)
+	if _, err := zw.Write(data); err != nil {
+		return nil, fmt.Errorf("failed to write data to gzip writer: %w", err)
+	}
+	if err := zw.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+	return b.Bytes(), nil
+}
+
+func decompressBytes(data []byte) ([]byte, error) {
+	buf := bytes.NewReader(data)
+	zr, err := gzip.NewReader(buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer zr.Close()
+	decompressedData, err := io.ReadAll(zr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read decompressed data: %w", err)
+	}
+	return decompressedData, nil
 }

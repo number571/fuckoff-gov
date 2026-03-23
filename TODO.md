@@ -4,4 +4,5 @@
 4. NewList -> NewListWithData
 5. Сертификаты на сервере
 6. Проверить URL сообщений
-7. 
+7. ContextCanceled -> убрать лог
+8. Image сжатие

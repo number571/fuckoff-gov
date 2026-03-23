@@ -216,6 +216,14 @@ func getMessageAsText(_ fyne.Window, msgBody *models.MessageBody) *widget.Label 
 
 func getMessageAsFile(w fyne.Window, msgBody *models.MessageBody) *fyne.Container {
 	filename := msgBody.Filename
+	payload, err := decompressBytes(msgBody.Payload)
+	if err != nil {
+		printLog(logErro, err)
+		return container.New(
+			layout.NewVBoxLayout(),
+			getFileAsBinary(fmt.Sprintf("%s (invalid bytes)", filename)),
+		)
+	}
 
 	downloadButton := widget.NewButtonWithIcon("LOAD", theme.DownloadIcon(), func() {
 		fileDialog := dialog.NewFileSave(
@@ -229,7 +237,7 @@ func getMessageAsFile(w fyne.Window, msgBody *models.MessageBody) *fyne.Containe
 				}
 				go func() {
 					defer writer.Close()
-					if _, err := writer.Write(msgBody.Payload); err != nil {
+					if _, err := writer.Write(payload); err != nil {
 						dialog.ShowError(err, w)
 						return
 					}
@@ -245,7 +253,7 @@ func getMessageAsFile(w fyne.Window, msgBody *models.MessageBody) *fyne.Containe
 
 	var data fyne.CanvasObject
 	if fileIsImage(filename) {
-		data = getFileAsImage(filename, msgBody.Payload)
+		data = getFileAsImage(filename, payload)
 	} else {
 		data = getFileAsBinary(filename)
 	}
