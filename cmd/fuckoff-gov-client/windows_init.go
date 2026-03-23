@@ -151,21 +151,37 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			return len(currentChatChannel.pkHashes)
 		},
 		func() fyne.CanvasObject {
-			return container.NewVBox(widget.NewButton("", func() {}))
+			templateDeleteButton := widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {})
+			templateDeleteButton.Importance = widget.DangerImportance
+
+			templateFriendButton := widget.NewButtonWithIcon("", theme.AccountIcon(), func() {})
+			return container.New(
+				layout.NewBorderLayout(nil, nil, templateDeleteButton, nil),
+				templateDeleteButton,
+				templateFriendButton,
+			)
 		},
 		func(i widget.ListItemID, item fyne.CanvasObject) {
 			pkHash := currentChatChannel.pkHashes[i]
 
-			buttonName := item.(*fyne.Container).Objects[0].(*widget.Button)
-			buttonName.SetText(cutHash384(pkHash))
-			buttonName.OnTapped = func() {
-				a.Clipboard().SetContent(pkHash)
-				dialog.ShowInformation(
-					"Copying a pk hash...",
-					"The pk hash has been successfully copied to the clipboard",
+			deleteButton := item.(*fyne.Container).Objects[0].(*widget.Button)
+			deleteButton.OnTapped = func() {
+				dialog.ShowConfirm(
+					"Blocking participant...",
+					"Are you sure you want to block this participant?",
+					func(ok bool) {
+						if !ok {
+							return
+						}
+						gParticipants = append(gParticipants[:i], gParticipants[i+1:]...)
+						setEditChannelsContent(w)
+					},
 					w,
 				)
 			}
+
+			friendButton := item.(*fyne.Container).Objects[1].(*widget.Button)
+			friendButton.SetText(cutHash384(pkHash))
 		},
 	)
 
@@ -197,7 +213,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			w,
 		)
 	})
-	favoriteButton.Importance = widget.SuccessImportance
+	favoriteButton.Importance = widget.HighImportance
 
 	buttonsGrid := container.NewGridWithColumns(
 		2,

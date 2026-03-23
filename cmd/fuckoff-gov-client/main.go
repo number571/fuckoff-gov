@@ -201,6 +201,7 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 			return
 		default:
 		}
+
 		if !gClient.inConnections(c) {
 			return
 		}
@@ -212,9 +213,11 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 			continue
 		}
 
-		counter, err := binarySearchCounter(ctx, channel, appClient, int64(sizeChan))
+		counter, err := binarySearchCounter(ctx, channel, appClient, int64(sizeChan)-1)
 		if err != nil {
-			fyne.Do(func() { printLog(logErro, err) })
+			if !errors.Is(err, context.Canceled) {
+				fyne.Do(func() { printLog(logErro, err) })
+			}
 			timeSleep(ctx, time.Second)
 			continue
 		}
@@ -227,7 +230,9 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 			}
 			messageInfo, err := appClient.ListenMessage(ctx, channel.chanID, counter)
 			if err != nil {
-				fyne.Do(func() { printLog(logErro, err) })
+				if !errors.Is(err, context.Canceled) {
+					fyne.Do(func() { printLog(logErro, err) })
+				}
 				timeSleep(ctx, time.Second)
 				continue
 			}
@@ -486,6 +491,7 @@ func binarySearchCounter(ctx context.Context, channel *sChannel, appClient clien
 		switch {
 		case err == nil:
 			// => next
+			result = mid
 			low = mid + 1
 		case errors.Is(err, gp_database.ErrNotFound):
 			// <= prev
