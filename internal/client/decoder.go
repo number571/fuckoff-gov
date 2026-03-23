@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/number571/fuckoff-gov/internal/crypto"
 	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
-	"github.com/number571/go-peer/pkg/crypto/symmetric"
 )
 
 type sDecoder struct {
@@ -69,7 +69,11 @@ func (p *sDecoder) ChannelInfo(pubKeyCreator asymmetric.IPubKey, channelInfo *mo
 		return nil, "", err
 	}
 
-	key := symmetric.NewCipher(skey).DecryptBytes(participantInfo.EncKey)
+	key, err := crypto.DecryptAESGCM(skey, participantInfo.EncKey)
+	if err != nil {
+		return nil, "", err
+	}
+
 	chanID := hashing.NewHMACHasher(key, bytes.Join(
 		[][]byte{channelInfo.EncName, encList},
 		[]byte{},
@@ -79,20 +83,27 @@ func (p *sDecoder) ChannelInfo(pubKeyCreator asymmetric.IPubKey, channelInfo *mo
 		return nil, "", errors.New("chan id is invalid")
 	}
 
-	name := symmetric.NewCipher(key).DecryptBytes(channelInfo.EncName) // TODO: check graphic chars
+	decName, err := crypto.DecryptAESGCM(key, channelInfo.EncName) // TODO: check graphic chars
+	if err != nil {
+		return nil, "", err
+	}
+
 	pkHashes := make([]string, 0, len(channelInfo.EncList))
 	for _, v := range channelInfo.EncList {
 		pkHashes = append(pkHashes, v.PkHash)
 	}
 
-	return key, string(name), nil
+	return key, string(decName), nil
 }
 
 func (p *sDecoder) MessageInfo(pubKeyCreator asymmetric.IPubKey, key []byte, messageInfo *models.MessageInfo) (*models.MessageBody, error) {
 	if ok := messageInfo.Validate(p.workParams[2], pubKeyCreator); !ok {
 		return nil, errors.New("invalid message")
 	}
-	decMsg := symmetric.NewCipher(key).DecryptBytes(messageInfo.EncMsg)
+	decMsg, err := crypto.DecryptAESGCM(key, messageInfo.EncMsg)
+	if err != nil {
+		return nil, err
+	}
 	msgBody := &models.MessageBody{}
 	if err := json.Unmarshal(decMsg, msgBody); err != nil {
 		return nil, err

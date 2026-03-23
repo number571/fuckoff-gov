@@ -73,6 +73,9 @@ func (p *sClient) init() error {
 	p.decoder = client.NewDecoder(works, p.sk)
 
 	// TODO: delete
+	p.mapConns = map[string]struct{}{
+		"http://localhost:8080": {},
+	}
 	p.connects = append(p.connects, &sConnection{address: "http://localhost:8080"})
 
 	return nil

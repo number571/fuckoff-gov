@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -27,7 +28,7 @@ func initWindowChatSearch(ctx context.Context, a fyne.App, w fyne.Window) *fyne.
 		func() { setChatChanContent(ctx, w, currentChatChannel) },
 	)
 
-	scrollSearchContainer = newCustomScroller(container.NewVBox())
+	scrollSearchContainer = newCustomScroller(container.NewVBox(), w)
 	scrollSearchContainer.SetMinSize(fyne.NewSize(400, 300))
 
 	inputConnectionEntry = widget.NewEntry()
@@ -90,7 +91,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			pkHash := currentChatChannel.pkHashes[i]
 
 			buttonName := item.(*fyne.Container).Objects[0].(*widget.Button)
-			buttonName.SetText(cutPkHash(pkHash))
+			buttonName.SetText(cutHash384(pkHash))
 			buttonName.OnTapped = func() {
 				a.Clipboard().SetContent(pkHash)
 				dialog.ShowInformation(
@@ -137,7 +138,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 	return contentContainerWrapper
 }
 
-func initWindowAboutPage(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
+func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Container {
 	header := widget.NewButtonWithIcon(
 		"Back to main page",
 		theme.ListIcon(),
@@ -146,7 +147,7 @@ func initWindowAboutPage(ctx context.Context, a fyne.App, w fyne.Window) *fyne.C
 
 	pkHash := gClient.sk.GetPubKey().GetHasher().ToString()
 	pubKeyButton := widget.NewButtonWithIcon(
-		cutPkHash(pkHash),
+		cutHash384(pkHash),
 		theme.ContentCopyIcon(),
 		func() {
 			a.Clipboard().SetContent(pkHash)
@@ -185,6 +186,11 @@ func initWindowAboutPage(ctx context.Context, a fyne.App, w fyne.Window) *fyne.C
 	inputNameEntry = widget.NewEntry()
 	inputNameEntry.SetText(gClient.getNickName())
 	inputNameEntry.OnChanged = func(s string) {
+		if len(s) > consts.MaxNickNameSize {
+			dialog.ShowError(fmt.Errorf("nickname size > max(%d)", consts.MaxNickNameSize), w)
+			inputNameEntry.SetText(gClient.getNickName())
+			return
+		}
 		if err := gClient.setNickName(s); err != nil {
 			printLog(logErro, err)
 		}
@@ -271,7 +277,7 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 	inputPkHashEntry = widget.NewEntry()
 	inputPkHashEntry.SetPlaceHolder("Type a pkhash...")
 
-	sendButton := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+	sendButtonAddParticipant := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
 		pkHash := inputPkHashEntry.Text
 		if pkHash == "" || len(pkHash) != (hashing.CHasherSize<<1) {
 			dialog.ShowError(errors.New("invalid pkhash"), w)
@@ -282,7 +288,7 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 	})
 
 	inputPkHashEntry.OnSubmitted = func(s string) {
-		sendButton.Tapped(nil)
+		sendButtonAddParticipant.Tapped(nil)
 	}
 
 	participantsList := widget.NewList(
@@ -318,7 +324,7 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 			}
 
 			friendButton := item.(*fyne.Container).Objects[1].(*widget.Button)
-			friendButton.SetText(cutPkHash(participant))
+			friendButton.SetText(cutHash384(participant))
 		},
 	)
 
@@ -347,27 +353,29 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 			return
 		}
 
+		dialog.ShowInformation("New channel", "Channel success created!", w)
 		setEditChannelsContent(w)
 	})
+	sendButtonCreateChannel.Importance = widget.HighImportance
 
-	inputEntrySendButton2 := container.New(
+	inputEntryCreateChannel := container.New(
 		layout.NewBorderLayout(nil, nil, sendButtonCreateChannel, nil),
 		sendButtonCreateChannel,
 		inputChannelNameEntry,
 	)
 
-	inputEntrySendButton := container.New(
-		layout.NewBorderLayout(inputEntrySendButton2, nil, nil, sendButton),
-		inputEntrySendButton2,
+	inputEntryContainer := container.New(
+		layout.NewBorderLayout(inputEntryCreateChannel, nil, nil, sendButtonAddParticipant),
+		inputEntryCreateChannel,
 		inputPkHashEntry,
-		sendButton,
+		sendButtonAddParticipant,
 	)
 
 	content := container.New(
-		layout.NewBorderLayout(header, inputEntrySendButton, nil, nil),
+		layout.NewBorderLayout(header, inputEntryContainer, nil, nil),
 		header,
 		participantsList,
-		inputEntrySendButton,
+		inputEntryContainer,
 	)
 
 	minSizeTarget := canvas.NewRectangle(color.Transparent)
@@ -503,7 +511,7 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 }
 
 func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
-	scrollChatContainer = newCustomScroller(container.NewVBox())
+	scrollChatContainer = newCustomScroller(container.NewVBox(), w)
 	scrollChatContainer.SetMinSize(fyne.NewSize(400, 300))
 
 	inputMessageEntry = widget.NewEntry()
@@ -521,6 +529,12 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 				}
 				defer reader.Close()
 
+				filename := reader.URI().Name()
+				if len(filename) > consts.MaxFileNameSize {
+					dialog.ShowError(fmt.Errorf("file name > max(%d)", consts.MaxFileNameSize), w)
+					return
+				}
+
 				filepath := reader.URI().Path()
 				fileInfo, err := os.Stat(filepath)
 				if err != nil {
@@ -529,8 +543,9 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 				}
 
 				fileSize := fileInfo.Size()
-				if fileSize > 1 {
-					// pass
+				if fileSize > consts.MaxMessageSize {
+					dialog.ShowError(fmt.Errorf("file size > max(%d)", consts.MaxMessageSize), w)
+					return
 				}
 
 				content, err := io.ReadAll(reader)
@@ -539,7 +554,7 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					return
 				}
 
-				pushMessage(ctx, w, currentChatChannel, reader.URI().Name(), content)
+				pushMessage(ctx, currentChatChannel, filename, content)
 				inputMessageEntry.SetText("")
 				w.Canvas().Focus(inputMessageEntry)
 			},
@@ -553,7 +568,11 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 		if content == "" {
 			return
 		}
-		pushMessage(ctx, w, currentChatChannel, "", []byte(content))
+		if len(content) > consts.MaxMessageSize {
+			dialog.ShowError(fmt.Errorf("content size > max(%d)", consts.MaxMessageSize), w)
+			return
+		}
+		pushMessage(ctx, currentChatChannel, "", []byte(content))
 		inputMessageEntry.SetText("")
 		w.Canvas().Focus(inputMessageEntry)
 	})
@@ -629,7 +648,7 @@ func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			channel := gChannels.getChannels()[i]
 
 			buttonName := item.(*fyne.Container).Objects[0].(*widget.Button)
-			buttonName.SetText(channel.aliasName)
+			buttonName.SetText(fmt.Sprintf("%s [%s]", channel.aliasName, cutHash384(channel.chanID)))
 			buttonName.OnTapped = func() { setChatChanContent(ctx, w, channel) }
 		},
 	)
@@ -679,29 +698,86 @@ func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 
 type customScroller struct {
 	container.Scroll
+	mu       *sync.Mutex
+	messages map[string]struct{}
 	switched bool
+	w        fyne.Window
 }
 
-func newCustomScroller(content fyne.CanvasObject) *customScroller {
+func newCustomScroller(content fyne.CanvasObject, w fyne.Window) *customScroller {
 	s := &customScroller{}
 	s.Content = content
+	s.mu = &sync.Mutex{}
+	s.messages = make(map[string]struct{}, 4096)
 	s.switched = true
+	s.w = w
 	s.ExtendBaseWidget(s)
 	return s
 }
 
 // Scrolled is called whenever the scroll position changes
 func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.Scroll.Scrolled(ev)
+
 	if s.Offset.Y <= 0 && s.switched {
-		// TODO:
+		if startIndexReader == 0 {
+			s.switched = false
+			return
+		}
+
+		readUntil := int64(-1)
+		if startIndexReader > consts.CountMessagesPerPage {
+			readUntil = int64(startIndexReader - consts.CountMessagesPerPage)
+		}
+
+		index := int64(startIndexReader)
+		startIndexReader = uint64(readUntil)
+
+		for index > int64(readUntil) {
+			if index < 0 {
+				break
+			}
+			msgHash, err := gClient.db.GetChannelMessageHashByIndex(currentChatChannel.chanID, uint64(index))
+			if err != nil {
+				fyne.Do(func() { dialog.ShowError(err, s.w) })
+				return
+			}
+			if _, ok := s.messages[msgHash]; ok {
+				index--
+				continue
+			}
+			s.messages[msgHash] = struct{}{}
+			messageInfo, err := gClient.db.GetMessage(msgHash)
+			if err != nil {
+				fyne.Do(func() { dialog.ShowError(err, s.w) })
+				return
+			}
+			pubKey, ok := currentChatChannel.pubKeysMap[messageInfo.PkHash]
+			if !ok {
+				fyne.Do(func() { dialog.ShowError(err, s.w) })
+				return
+			}
+			msgBody, err := gClient.decoder.MessageInfo(pubKey, currentChatChannel.key, messageInfo)
+			if err != nil {
+				fyne.Do(func() { dialog.ShowError(err, s.w) })
+				return
+			}
+			index--
+			fyne.Do(func() { addMessageToChat(s.w, pubKey, msgBody, true) })
+		}
+
 		s.switched = false
 	}
 	if s.Offset.Y > 0 {
+		s.messages = make(map[string]struct{}, 4096)
 		s.switched = true
 	}
+
 }
 
-func cutPkHash(pkHash string) string {
+func cutHash384(pkHash string) string {
 	return fmt.Sprintf("%s...%s", pkHash[:12], pkHash[len(pkHash)-12:])
 }

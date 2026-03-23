@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/number571/fuckoff-gov/internal/keys"
+	"github.com/number571/fuckoff-gov/internal/crypto"
 	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
@@ -27,9 +27,13 @@ func NewEncoder(workParams [3]uint64, privKey asymmetric.IPrivKey) IEncoder {
 
 func (p *sEncoder) InitClient() *models.ClientInfo {
 	pubKey := p.privKey.GetPubKey()
+
+	hash := pubKey.GetHasher().ToBytes()
+	proof := puzzle.NewPoWPuzzle(p.workParams[0]).ProofBytes(hash, 32)
+
 	return &models.ClientInfo{
 		PubKey: pubKey.ToString(),
-		Proof:  keys.ProofKey(p.workParams[0], pubKey),
+		Proof:  proof,
 	}
 }
 
@@ -45,10 +49,16 @@ func (p *sEncoder) InitChannel(name string, pubKeys []asymmetric.IPubKey) *model
 	if err != nil {
 		panic(err)
 	}
+
+	encKey, err := crypto.EncryptAESGCM(sk, key)
+	if err != nil {
+		panic(err)
+	}
+
 	list = append(list, &models.ParticipantInfo{
 		PkHash: pk.GetHasher().ToString(),
 		Encaps: ct,
-		EncKey: symmetric.NewCipher(sk).EncryptBytes(key),
+		EncKey: encKey,
 	})
 
 	for _, pk := range pubKeys {
@@ -56,10 +66,14 @@ func (p *sEncoder) InitChannel(name string, pubKeys []asymmetric.IPubKey) *model
 		if err != nil {
 			panic(err)
 		}
+		encKey, err := crypto.EncryptAESGCM(sk, key)
+		if err != nil {
+			panic(err)
+		}
 		list = append(list, &models.ParticipantInfo{
 			PkHash: pk.GetHasher().ToString(),
 			Encaps: ct,
-			EncKey: symmetric.NewCipher(sk).EncryptBytes(key),
+			EncKey: encKey,
 		})
 	}
 
@@ -68,7 +82,11 @@ func (p *sEncoder) InitChannel(name string, pubKeys []asymmetric.IPubKey) *model
 		panic(err)
 	}
 
-	encName := symmetric.NewCipher(key).EncryptBytes([]byte(name))
+	encName, err := crypto.EncryptAESGCM(key, []byte(name))
+	if err != nil {
+		panic(err)
+	}
+
 	chanID := hashing.NewHMACHasher(key, bytes.Join(
 		[][]byte{encName, encList},
 		[]byte{},
@@ -88,7 +106,10 @@ func (p *sEncoder) PushMessage(chanID string, key []byte, msgBody *models.Messag
 	if err != nil {
 		panic(err)
 	}
-	encMsg := symmetric.NewCipher(key).EncryptBytes(bodyBytes)
+	encMsg, err := crypto.EncryptAESGCM(key, bodyBytes)
+	if err != nil {
+		panic(err)
+	}
 	hashMessage := hashing.NewHMACHasher([]byte(chanID), encMsg).ToString()
 	return &models.MessageInfo{
 		ChanID: chanID,

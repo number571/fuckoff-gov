@@ -3,7 +3,6 @@ package models
 import (
 	"time"
 
-	"github.com/number571/fuckoff-gov/internal/keys"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
 	"github.com/number571/go-peer/pkg/crypto/puzzle"
@@ -26,10 +25,8 @@ func (p *ClientInfo) Validate(workSize uint64) bool {
 	if pubKey == nil {
 		return false
 	}
-	if ok := keys.VerifyProofKey(workSize, p.Proof, pubKey); !ok {
-		return false
-	}
-	return true
+	hash := pubKey.GetHasher().ToBytes()
+	return puzzle.NewPoWPuzzle(workSize).VerifyBytes(hash, p.Proof)
 }
 
 type ChannelInfo struct {

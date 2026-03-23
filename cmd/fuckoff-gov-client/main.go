@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/dialog"
 	"github.com/number571/fuckoff-gov/internal/client"
+	"github.com/number571/fuckoff-gov/internal/consts"
 	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 
@@ -120,6 +121,149 @@ func runChannelsListener(ctx context.Context, w fyne.Window) {
 	}
 }
 
+func runMessagesListener(ctx context.Context, w fyne.Window, channel *sChannel) {
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		chatListenerActive = true
+		<-closeListenChat
+		chatListenerActive = false
+		cancel()
+	}()
+
+	counter, err := gClient.db.GetCountChannelMessages(channel.chanID)
+	if err != nil {
+		fyne.Do(func() { dialog.ShowError(err, w) })
+		return
+	}
+
+	index := uint64(0)
+	if counter > consts.CountMessagesPerPage {
+		index = counter - consts.CountMessagesPerPage
+	}
+
+	if index == 1 {
+		startIndexReader = 0
+	} else {
+		startIndexReader = index - 1
+	}
+
+	for index < counter {
+		msgHash, err := gClient.db.GetChannelMessageHashByIndex(channel.chanID, index)
+		if err != nil {
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
+		messageInfo, err := gClient.db.GetMessage(msgHash)
+		if err != nil {
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
+		pubKey, ok := channel.pubKeysMap[messageInfo.PkHash]
+		if !ok {
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
+		msgBody, err := gClient.decoder.MessageInfo(pubKey, channel.key, messageInfo)
+		if err != nil {
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
+		index++
+		fyne.Do(func() { addMessageToChat(w, pubKey, msgBody, false) })
+	}
+
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	connsMapper := make(map[string]struct{})
+	for {
+		for _, c := range gClient.getConnections() {
+			if _, ok := connsMapper[c.address]; ok {
+				continue
+			}
+			connsMapper[c.address] = struct{}{}
+			go runMessagesListenerOnConnection(ctx, w, channel, c)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel *sChannel, c *sConnection) {
+	appClient := newConn(c.address)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if !gClient.inConnections(c) {
+			return
+		}
+
+		sizeChan, err := appClient.CountMessages(ctx, channel.chanID)
+		if err != nil {
+			fyne.Do(func() { printLog(logErro, err) })
+			timeSleep(ctx, time.Second)
+			continue
+		}
+
+		counter, err := binarySearchCounter(ctx, channel, appClient, int64(sizeChan))
+		if err != nil {
+			fyne.Do(func() { printLog(logErro, err) })
+			timeSleep(ctx, time.Second)
+			continue
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			messageInfo, err := appClient.ListenMessage(ctx, channel.chanID, counter)
+			if err != nil {
+				fyne.Do(func() { printLog(logErro, err) })
+				timeSleep(ctx, time.Second)
+				continue
+			}
+			msgHash := messageInfo.GetHash()
+			if _, err = gClient.db.GetMessage(msgHash); err == nil {
+				counter++
+				continue
+			}
+			pubKey, ok := channel.pubKeysMap[messageInfo.PkHash]
+			if !ok {
+				fyne.Do(func() { printLog(logErro, errors.New("pubkey not found")) })
+				timeSleep(ctx, time.Second)
+				continue
+			}
+			msgBody, err := gClient.decoder.MessageInfo(pubKey, channel.key, messageInfo)
+			if err != nil {
+				fyne.Do(func() { printLog(logErro, err) })
+				timeSleep(ctx, time.Second)
+				continue
+			}
+			if err := pushRemoteMessage(ctx, messageInfo); err != nil {
+				fyne.Do(func() { printLog(logErro, err) })
+				timeSleep(ctx, time.Second)
+				continue
+			}
+			if err := gClient.db.AddChannelMessage(messageInfo); err != nil {
+				fyne.Do(func() { printLog(logErro, err) })
+				timeSleep(ctx, time.Second)
+				continue
+			}
+			counter++
+			fyne.Do(func() { addMessageToChat(w, pubKey, msgBody, false) })
+		}
+	}
+}
+
 func runChannelsListenerOnConnection(ctx context.Context, c *sConnection, pkHash string) {
 	appClient := newConn(c.address)
 	counter := uint64(0)
@@ -164,12 +308,18 @@ func runChannelsListenerOnConnection(ctx context.Context, c *sConnection, pkHash
 }
 
 func initRemoteChannel(ctx context.Context, channelInfo *models.ChannelInfo) error {
-	var lastErr error
+	var (
+		lastErr    error
+		hasSuccess bool
+	)
 	for _, c := range gClient.getConnections() {
 		if err := newConn(c.address).InitChannel(ctx, channelInfo); err != nil {
 			lastErr = err
 			continue
 		}
+		hasSuccess = true
+	}
+	if hasSuccess {
 		return nil
 	}
 	return lastErr
@@ -268,6 +418,24 @@ func initRemoteClient(ctx context.Context, clientInfo *models.ClientInfo) {
 	}
 }
 
+func pushRemoteMessage(ctx context.Context, messageInfo *models.MessageInfo) error {
+	var (
+		lastErr    error
+		hasSuccess bool
+	)
+	for _, c := range gClient.getConnections() {
+		if err := newConn(c.address).PushMessage(ctx, messageInfo); err != nil {
+			lastErr = err
+			continue
+		}
+		hasSuccess = true
+	}
+	if hasSuccess {
+		return nil
+	}
+	return lastErr
+}
+
 func getClientInfo(ctx context.Context, pkHash string) (asymmetric.IPubKey, *models.ClientInfo, error) {
 	clientInfo, err := gClient.db.GetClient(pkHash)
 	if err == nil {
@@ -292,9 +460,40 @@ func getClientInfo(ctx context.Context, pkHash string) (asymmetric.IPubKey, *mod
 			lastErr = err
 			continue
 		}
+		if err := gClient.db.SetClient(clientInfo); err != nil {
+			return nil, nil, err
+		}
 		return pubKey, clientInfo, nil
 	}
 	return nil, nil, lastErr
+}
+
+func binarySearchCounter(ctx context.Context, channel *sChannel, appClient client.IClient, high int64) (uint64, error) {
+	low := int64(0)
+	result := int64(0)
+
+	for low <= high {
+		mid := low + (high-low)/2
+		messageInfo, err := appClient.ListenMessage(ctx, channel.chanID, uint64(mid))
+		if err != nil {
+			return 0, err
+		}
+		msgHash := messageInfo.GetHash()
+		_, err = gClient.db.GetMessage(msgHash)
+		switch {
+		case err == nil:
+			// => next
+			low = mid + 1
+		case errors.Is(err, gp_database.ErrNotFound):
+			// <= prev
+			result = mid
+			high = mid - 1
+		default:
+			return 0, err
+		}
+	}
+
+	return uint64(result), nil
 }
 
 func newConn(addr string) client.IClient {

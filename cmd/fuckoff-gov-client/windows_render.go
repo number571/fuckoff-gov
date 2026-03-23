@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"image/color"
 	"strings"
@@ -33,12 +32,9 @@ var (
 
 var (
 	chatListenerActive = false
+	startIndexReader   = uint64(0)
 	closeListenChat    = make(chan struct{})
 	currentChatChannel *sChannel
-)
-
-const (
-	countPage = 128
 )
 
 type sConnection struct {
@@ -104,7 +100,7 @@ func setChatChanContent(ctx context.Context, w fyne.Window, channel *sChannel) {
 	clearAfterSwitch()
 	currentChatChannel = channel
 
-	listenMessages(w, channel)
+	go runMessagesListener(ctx, w, channel)
 
 	w.SetContent(chatChannelContainer)
 	w.Canvas().Focus(inputMessageEntry)
@@ -118,6 +114,7 @@ func setChatChanContent(ctx context.Context, w fyne.Window, channel *sChannel) {
 }
 
 func clearAfterSwitch() {
+	startIndexReader = 0
 	inputChannelNameEntry.SetText("")
 	inputConnectionEntry.SetText("")
 	inputPkHashEntry.SetText("")
@@ -134,80 +131,19 @@ func pingConnections(ctx context.Context) {
 	}
 }
 
-func pushMessage(ctx context.Context, w fyne.Window, channel *sChannel, filename string, payload []byte) {
-	msgBody := &models.MessageBody{
-		Filename:  filename,
-		Sender:    gClient.getNickName(),
-		Payload:   payload,
-		Timestamp: time.Now(),
-	}
+func pushMessage(ctx context.Context, channel *sChannel, filename string, payload []byte) {
 	messageInfo := gClient.encoder.PushMessage(
 		channel.chanID,
 		channel.key,
-		msgBody,
+		&models.MessageBody{
+			Filename:  filename,
+			Sender:    gClient.getNickName(),
+			Payload:   payload,
+			Timestamp: time.Now(),
+		},
 	)
-	for _, c := range gClient.getConnections() {
-		if err := newConn(c.address).PushMessage(ctx, messageInfo); err != nil {
-			printLog(logErro, err)
-			continue
-		}
-	}
-}
-
-func listenMessages(w fyne.Window, channel *sChannel) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		chatListenerActive = true
-		<-closeListenChat
-		chatListenerActive = false
-		cancel()
-	}()
-
-	for _, c := range gClient.getConnections() {
-		appClient := newConn(c.address)
-
-		counter, err := appClient.CountMessages(ctx, channel.chanID)
-		if err != nil {
-			printLog(logErro, err)
-			continue
-		}
-
-		if counter > countPage {
-			counter -= countPage
-		} else {
-			counter = 0
-		}
-
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				msgInfo, err := appClient.ListenMessage(ctx, channel.chanID, counter)
-				if err != nil {
-					fyne.Do(func() { printLog(logErro, err) })
-					timeSleep(ctx, time.Second)
-					continue
-				}
-				pubKey, ok := channel.pubKeysMap[msgInfo.PkHash]
-				if !ok {
-					fyne.Do(func() { printLog(logErro, errors.New("pubkey not found")) })
-					timeSleep(ctx, time.Second)
-					continue
-				}
-				msgBody, err := gClient.decoder.MessageInfo(pubKey, channel.key, msgInfo)
-				if err != nil {
-					fyne.Do(func() { printLog(logErro, err) })
-					timeSleep(ctx, time.Second)
-					continue
-				}
-				counter++
-				fyne.Do(func() { addMessageToChat(w, pubKey, msgBody, false) })
-			}
-		}()
+	if err := pushRemoteMessage(ctx, messageInfo); err != nil {
+		printLog(logErro, err)
 	}
 }
 
@@ -236,7 +172,7 @@ func addMessageToChat(w fyne.Window, pkSender asymmetric.IPubKey, msgBody *model
 		}(),
 		data,
 		func() *widget.Label {
-			msgLabel := widget.NewLabel(fmt.Sprintf("%s [%s]", cutPkHash(pkSenderHash), msgBody.Timestamp.Format(time.DateTime)))
+			msgLabel := widget.NewLabel(fmt.Sprintf("%s [%s]", cutHash384(pkSenderHash), msgBody.Timestamp.Format(time.DateTime)))
 			msgLabel.Wrapping = fyne.TextWrapWord
 			msgLabel.Selectable = true
 			msgLabel.Importance = widget.LowImportance
@@ -251,12 +187,24 @@ func addMessageToChat(w fyne.Window, pkSender asymmetric.IPubKey, msgBody *model
 	contentContainer := scrollChatContainer.Content.(*fyne.Container)
 	if toTop {
 		contentContainer.Objects = append([]fyne.CanvasObject{coloredContainer}, contentContainer.Objects...)
+		scrollChatContainer.ScrollToTop()
 	} else {
 		contentContainer.Objects = append(contentContainer.Objects, coloredContainer)
+		if isAtBottom(scrollChatContainer) {
+			scrollChatContainer.ScrollToBottom()
+		}
 	}
 
 	scrollChatContainer.switched = true
-	scrollChatContainer.ScrollToBottom()
+}
+
+func isAtBottom(scroll *customScroller) bool {
+	diff := float32(200)
+	maxY := scroll.Content.MinSize().Height - scroll.Size().Height - diff
+	if maxY <= 0 {
+		return true
+	}
+	return scroll.Offset.Y >= maxY
 }
 
 func getMessageAsText(_ fyne.Window, msgBody *models.MessageBody) *widget.Label {
