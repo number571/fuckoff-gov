@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"image/color"
+	"image/jpeg"
+	"image/png"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,6 +27,7 @@ var (
 	inputPkHashEntry      *widget.Entry
 	inputChannelNameEntry *widget.Entry
 	inputConnectionEntry  *widget.Entry
+	inputChatSearchEntry  *widget.Entry
 	inputMessageEntry     *widget.Entry
 	scrollChatContainer   *customScroller
 	scrollSearchContainer *customScroller
@@ -31,10 +35,11 @@ var (
 )
 
 var (
-	chatListenerActive = false
-	startIndexReader   = uint64(0)
-	closeListenChat    = make(chan struct{})
-	currentChatChannel *sChannel
+	chatListenerActive     = false
+	startChatIndexReader   = uint64(0)
+	startSearchIndexReader = uint64(0)
+	closeListenChat        = make(chan struct{})
+	currentChatChannel     *sChannel
 )
 
 type sConnection struct {
@@ -114,12 +119,17 @@ func setChatChanContent(ctx context.Context, w fyne.Window, channel *sChannel) {
 }
 
 func clearAfterSwitch() {
-	startIndexReader = 0
+	startChatIndexReader = 0
+	startSearchIndexReader = 0
+	inputChatSearchEntry.SetText("")
 	inputChannelNameEntry.SetText("")
 	inputConnectionEntry.SetText("")
 	inputPkHashEntry.SetText("")
 	inputMessageEntry.SetText("")
+	scrollChatContainer.messages = make(map[string]struct{}, 4096)
 	scrollChatContainer.Content.(*fyne.Container).RemoveAll()
+	scrollSearchContainer.messages = make(map[string]struct{}, 4096)
+	scrollSearchContainer.Content.(*fyne.Container).RemoveAll()
 	if chatListenerActive {
 		closeListenChat <- struct{}{}
 	}
@@ -147,7 +157,7 @@ func pushMessage(ctx context.Context, channel *sChannel, filename string, payloa
 	}
 }
 
-func addMessageToChat(w fyne.Window, pkSender asymmetric.IPubKey, msgBody *models.MessageBody, toTop bool) {
+func addMessageToChat(w fyne.Window, scrollContainer *customScroller, pkSender asymmetric.IPubKey, msgBody *models.MessageBody, toTop bool) {
 	pkSenderHash := pkSender.GetHasher().ToString()
 
 	var data fyne.CanvasObject
@@ -184,18 +194,16 @@ func addMessageToChat(w fyne.Window, pkSender asymmetric.IPubKey, msgBody *model
 	backgroundRect := canvas.NewRectangle(bgColor)
 	coloredContainer := container.NewStack(backgroundRect, c)
 
-	contentContainer := scrollChatContainer.Content.(*fyne.Container)
+	contentContainer := scrollContainer.Content.(*fyne.Container)
 	if toTop {
 		contentContainer.Objects = append([]fyne.CanvasObject{coloredContainer}, contentContainer.Objects...)
-		scrollChatContainer.ScrollToTop()
+		scrollContainer.ScrollToTop()
 	} else {
 		contentContainer.Objects = append(contentContainer.Objects, coloredContainer)
-		if isAtBottom(scrollChatContainer) {
-			scrollChatContainer.ScrollToBottom()
+		if isAtBottom(scrollContainer) {
+			scrollContainer.ScrollToBottom()
 		}
 	}
-
-	scrollChatContainer.switched = true
 }
 
 func isAtBottom(scroll *customScroller) bool {
@@ -215,8 +223,22 @@ func getMessageAsText(_ fyne.Window, msgBody *models.MessageBody) *widget.Label 
 }
 
 func getMessageAsFile(w fyne.Window, msgBody *models.MessageBody) *fyne.Container {
+	var err error
+
 	filename := msgBody.Filename
-	payload, err := decompressBytes(msgBody.Payload)
+	payload := msgBody.Payload
+
+	if !fileIsImage(filename) {
+		payload, err = decompressBytes(msgBody.Payload)
+	} else {
+		imgReader := bytes.NewReader(msgBody.Payload)
+		if filepath.Ext(filename) == "png" {
+			_, err = png.Decode(imgReader)
+		} else {
+			_, err = jpeg.Decode(imgReader)
+		}
+	}
+
 	if err != nil {
 		printLog(logErro, err)
 		return container.New(

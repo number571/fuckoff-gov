@@ -6,9 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"image/color"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"net/url"
+	"path/filepath"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -19,6 +23,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/number571/fuckoff-gov/internal/consts"
+	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
 )
 
@@ -29,28 +34,88 @@ func initWindowChatSearch(ctx context.Context, a fyne.App, w fyne.Window) *fyne.
 		func() { setChatChanContent(ctx, w, currentChatChannel) },
 	)
 
-	scrollSearchContainer = newCustomScroller(container.NewVBox(), w)
+	scrollSearchContainer = newCustomScroller(container.NewVBox(), &startSearchIndexReader, w)
 	scrollSearchContainer.SetMinSize(fyne.NewSize(400, 300))
 
-	inputConnectionEntry = widget.NewEntry()
-	inputConnectionEntry.SetPlaceHolder("Type a string...")
+	inputChatSearchEntry = widget.NewEntry()
+	inputChatSearchEntry.SetPlaceHolder("Type a string...")
 
 	sendButton := widget.NewButtonWithIcon(
 		"",
 		theme.SearchIcon(),
 		func() {
-			// TODO:
+			if inputChatSearchEntry.Text == "" {
+				return
+			}
+
+			text := []byte(inputChatSearchEntry.Text)
+			filter := func(mb *models.MessageBody) bool {
+				if mb.Filename != "" {
+					return false
+				}
+				return bytes.Contains(mb.Payload, text)
+			}
+
 			setChatSearchContent(w, currentChatChannel)
+
+			counter, err := gClient.db.GetCountChannelMessages(currentChatChannel.chanID)
+			if err != nil {
+				fyne.Do(func() { dialog.ShowError(err, w) })
+				return
+			}
+
+			readCount := 0
+			index := int64(counter) - 1
+			for {
+				if index < 0 || readCount == consts.CountMessagesPerPage {
+					break
+				}
+				msgHash, err := gClient.db.GetChannelMessageHashByIndex(currentChatChannel.chanID, uint64(index))
+				if err != nil {
+					fyne.Do(func() { dialog.ShowError(err, w) })
+					return
+				}
+				messageInfo, err := gClient.db.GetMessage(msgHash)
+				if err != nil {
+					fyne.Do(func() { dialog.ShowError(err, w) })
+					return
+				}
+				pubKey, ok := currentChatChannel.pubKeysMap[messageInfo.PkHash]
+				if !ok {
+					fyne.Do(func() { dialog.ShowError(err, w) })
+					return
+				}
+				msgBody, err := gClient.decoder.MessageInfo(pubKey, currentChatChannel.key, messageInfo)
+				if err != nil {
+					fyne.Do(func() { dialog.ShowError(err, w) })
+					return
+				}
+				index--
+				if !filter(msgBody) {
+					continue
+				}
+				readCount++
+				fyne.Do(func() { addMessageToChat(w, scrollSearchContainer, pubKey, msgBody, true) })
+			}
+
+			if index <= 0 {
+				startSearchIndexReader = 0
+			} else {
+				startSearchIndexReader = uint64(index)
+			}
+
+			scrollSearchContainer.filter = filter
+			scrollSearchContainer.ScrollToBottom()
 		},
 	)
 
-	inputConnectionEntry.OnSubmitted = func(s string) {
+	inputChatSearchEntry.OnSubmitted = func(s string) {
 		sendButton.Tapped(nil)
 	}
 
 	inputEntrySendButton := container.New(
 		layout.NewBorderLayout(nil, nil, nil, sendButton),
-		inputConnectionEntry,
+		inputChatSearchEntry,
 		sendButton,
 	)
 
@@ -533,7 +598,7 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 }
 
 func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
-	scrollChatContainer = newCustomScroller(container.NewVBox(), w)
+	scrollChatContainer = newCustomScroller(container.NewVBox(), &startChatIndexReader, w)
 	scrollChatContainer.SetMinSize(fyne.NewSize(400, 300))
 
 	inputMessageEntry = widget.NewEntry()
@@ -563,18 +628,46 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					return
 				}
 
-				comptessedContent, err := compressBytes(content)
-				if err != nil {
-					dialog.ShowError(err, w)
-					return
+				var compressedContent []byte
+
+				if !fileIsImage(filename) {
+					compressedContent, err = compressBytes(content)
+					if err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+				} else {
+					var (
+						img image.Image
+						buf bytes.Buffer
+					)
+					imgReader := bytes.NewReader(content)
+					if filepath.Ext(filename) == "png" {
+						img, err = png.Decode(imgReader)
+						if err != nil {
+							dialog.ShowError(err, w)
+							return
+						}
+					} else {
+						img, err = jpeg.Decode(imgReader)
+						if err != nil {
+							dialog.ShowError(err, w)
+							return
+						}
+					}
+					if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 25}); err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+					compressedContent = buf.Bytes()
 				}
 
-				if len(comptessedContent) > consts.MaxMessageSize {
+				if len(compressedContent) > consts.MaxMessageSize {
 					dialog.ShowError(fmt.Errorf("file size > max(%d)", consts.MaxMessageSize), w)
 					return
 				}
 
-				pushMessage(ctx, currentChatChannel, filename, comptessedContent)
+				pushMessage(ctx, currentChatChannel, filename, compressedContent)
 				inputMessageEntry.SetText("")
 				w.Canvas().Focus(inputMessageEntry)
 			},
@@ -718,18 +811,19 @@ func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 
 type customScroller struct {
 	container.Scroll
-	mu       *sync.Mutex
-	messages map[string]struct{}
-	switched bool
-	w        fyne.Window
+	mu               *sync.Mutex
+	messages         map[string]struct{}
+	startIndexReader *uint64
+	w                fyne.Window
+	filter           func(*models.MessageBody) bool
 }
 
-func newCustomScroller(content fyne.CanvasObject, w fyne.Window) *customScroller {
+func newCustomScroller(content fyne.CanvasObject, startIndexReader *uint64, w fyne.Window) *customScroller {
 	s := &customScroller{}
 	s.Content = content
 	s.mu = &sync.Mutex{}
+	s.startIndexReader = startIndexReader
 	s.messages = make(map[string]struct{}, 4096)
-	s.switched = true
 	s.w = w
 	s.ExtendBaseWidget(s)
 	return s
@@ -742,21 +836,18 @@ func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
 
 	s.Scroll.Scrolled(ev)
 
-	if s.Offset.Y <= 0 && s.switched {
-		if startIndexReader == 0 {
-			s.switched = false
-			return
-		}
-
+	if s.Offset.Y <= 0 {
 		readUntil := int64(-1)
-		if startIndexReader > consts.CountMessagesPerPage {
-			readUntil = int64(startIndexReader - consts.CountMessagesPerPage)
+		if *s.startIndexReader > consts.CountMessagesPerPage {
+			readUntil = int64(*s.startIndexReader - consts.CountMessagesPerPage)
 		}
 
-		index := int64(startIndexReader)
-		startIndexReader = uint64(readUntil)
+		index := int64(*s.startIndexReader)
+		if readUntil >= 0 {
+			*s.startIndexReader = uint64(readUntil)
+		}
 
-		for index > int64(readUntil) {
+		for index > readUntil {
 			if index < 0 {
 				break
 			}
@@ -786,16 +877,18 @@ func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
 				return
 			}
 			index--
-			fyne.Do(func() { addMessageToChat(s.w, pubKey, msgBody, true) })
+			if s.filter != nil && !s.filter(msgBody) {
+				if readUntil > 0 {
+					*s.startIndexReader--
+				}
+				if readUntil >= 0 {
+					readUntil--
+				}
+				continue
+			}
+			fyne.Do(func() { addMessageToChat(s.w, s, pubKey, msgBody, true) })
 		}
-
-		s.switched = false
 	}
-	if s.Offset.Y > 0 {
-		s.messages = make(map[string]struct{}, 4096)
-		s.switched = true
-	}
-
 }
 
 func cutHash384(pkHash string) string {

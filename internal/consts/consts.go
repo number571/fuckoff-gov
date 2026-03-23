@@ -11,7 +11,7 @@ const (
 )
 
 const (
-	MaxMessageSize  = (1 << 10) // 1MiB
+	MaxMessageSize  = (1 << 20) // 1MiB
 	MaxNickNameSize = 64        // bytes
 	MaxFileNameSize = 256       // bytes
 )

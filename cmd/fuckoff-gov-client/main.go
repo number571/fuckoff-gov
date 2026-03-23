@@ -141,10 +141,10 @@ func runMessagesListener(ctx context.Context, w fyne.Window, channel *sChannel) 
 		index = counter - consts.CountMessagesPerPage
 	}
 
-	if index == 1 {
-		startIndexReader = 0
+	if index == 0 {
+		startChatIndexReader = 0
 	} else {
-		startIndexReader = index - 1
+		startChatIndexReader = index - 1
 	}
 
 	for index < counter {
@@ -169,7 +169,7 @@ func runMessagesListener(ctx context.Context, w fyne.Window, channel *sChannel) 
 			return
 		}
 		index++
-		fyne.Do(func() { addMessageToChat(w, pubKey, msgBody, false) })
+		fyne.Do(func() { addMessageToChat(w, scrollChatContainer, pubKey, msgBody, false) })
 	}
 
 	ticker := time.NewTicker(time.Minute)
@@ -259,7 +259,7 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 				continue
 			}
 			counter++
-			fyne.Do(func() { addMessageToChat(w, pubKey, msgBody, false) })
+			fyne.Do(func() { addMessageToChat(w, scrollChatContainer, pubKey, msgBody, false) })
 		}
 	}
 }
