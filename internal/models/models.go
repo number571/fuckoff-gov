@@ -9,10 +9,11 @@ import (
 )
 
 type LocalData struct {
-	NickName    string                 `json:"nickname"`
-	PrivKey     string                 `json:"privkey"`
-	Connections map[string]struct{}    `json:"connections"`
-	BlackLists  [2]map[string]struct{} `json:"black_lists"`
+	NickName          string              `json:"nickname"`
+	PrivKey           string              `json:"privkey"`
+	Connections       map[string]struct{} `json:"connections"`
+	FavoriteChannels  map[string]struct{} `json:"favorite_channels"`
+	BlackListChannels map[string]struct{} `json:"blacklist_channels"`
 }
 
 type ClientInfo struct {

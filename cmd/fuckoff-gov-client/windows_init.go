@@ -103,7 +103,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 		},
 	)
 
-	deleteButton := widget.NewButtonWithIcon("Block chat", theme.CancelIcon(), func() {
+	blockButton := widget.NewButtonWithIcon("Block chat", theme.CancelIcon(), func() {
 		dialog.ShowConfirm(
 			"Blocking chat...",
 			"Are you sure you want to block this chat?",
@@ -116,12 +116,33 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			w,
 		)
 	})
-	deleteButton.Importance = widget.DangerImportance
+	blockButton.Importance = widget.DangerImportance
+
+	favoriteButton := widget.NewButtonWithIcon("Favorite chat", theme.CancelIcon(), func() {
+		dialog.ShowConfirm(
+			"Chat to favorite...",
+			"Are you sure you want set this chat to favorite list?",
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				setChatListContent(w)
+			},
+			w,
+		)
+	})
+	favoriteButton.Importance = widget.SuccessImportance
+
+	buttonsGrid := container.NewGridWithColumns(
+		2,
+		blockButton,
+		favoriteButton,
+	)
 
 	content := container.New(
-		layout.NewBorderLayout(header, deleteButton, nil, nil),
+		layout.NewBorderLayout(header, buttonsGrid, nil, nil),
 		header,
-		deleteButton,
+		buttonsGrid,
 		participantsList,
 	)
 

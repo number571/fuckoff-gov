@@ -18,6 +18,8 @@ import (
 func handlePing(w http.ResponseWriter, r *http.Request) {}
 
 func handleClientInit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 20<<10) // 20KiB
+
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -135,6 +137,8 @@ func handleClientChannelsListen(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleChannelInit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20) // 2MiB
+
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -222,6 +226,8 @@ func handleChannelChatSize(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleChannelChatPush(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20) // 2MiB
+
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
