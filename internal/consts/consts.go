@@ -12,6 +12,7 @@ const (
 
 const (
 	MaxMessageSize  = (1 << 20) // 1MiB
+	MaxChannelName  = 64        // bytes
 	MaxNickNameSize = 64        // bytes
 	MaxFileNameSize = 256       // bytes
 )

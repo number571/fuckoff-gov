@@ -242,13 +242,9 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 				timeSleep(ctx, time.Second)
 				continue
 			}
+			counter++
 			msgBody, err := gClient.decoder.MessageInfo(pubKey, channel.key, messageInfo)
 			if err != nil {
-				fyne.Do(func() { printLog(logErro, err) })
-				timeSleep(ctx, time.Second)
-				continue
-			}
-			if err := pushRemoteMessage(ctx, messageInfo); err != nil {
 				fyne.Do(func() { printLog(logErro, err) })
 				timeSleep(ctx, time.Second)
 				continue
@@ -258,7 +254,11 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 				timeSleep(ctx, time.Second)
 				continue
 			}
-			counter++
+			if err := pushRemoteMessage(ctx, messageInfo); err != nil {
+				fyne.Do(func() { printLog(logErro, err) })
+				timeSleep(ctx, time.Second)
+				continue
+			}
 			fyne.Do(func() { addMessageToChat(w, scrollChatContainer, pubKey, msgBody, false) })
 		}
 	}
@@ -334,7 +334,10 @@ func initLocalChannel(ctx context.Context, chanName string, pkHashes []string) (
 		}
 		pubKeys = append(pubKeys, pubKey)
 	}
-	channelInfo := gClient.encoder.InitChannel(chanName, pubKeys)
+	channelInfo, err := gClient.encoder.InitChannel(chanName, pubKeys)
+	if err != nil {
+		return nil, err
+	}
 	if err := addChannelIntoList(ctx, channelInfo); err != nil {
 		return nil, err
 	}

@@ -141,8 +141,8 @@ func pingConnections(ctx context.Context) {
 	}
 }
 
-func pushMessage(ctx context.Context, channel *sChannel, filename string, payload []byte) {
-	messageInfo := gClient.encoder.PushMessage(
+func pushMessage(ctx context.Context, channel *sChannel, filename string, payload []byte) error {
+	messageInfo, err := gClient.encoder.PushMessage(
 		channel.chanID,
 		channel.key,
 		&models.MessageBody{
@@ -152,9 +152,13 @@ func pushMessage(ctx context.Context, channel *sChannel, filename string, payloa
 			Timestamp: time.Now(),
 		},
 	)
-	if err := pushRemoteMessage(ctx, messageInfo); err != nil {
-		printLog(logErro, err)
+	if err != nil {
+		return err
 	}
+	if err := pushRemoteMessage(ctx, messageInfo); err != nil {
+		return err
+	}
+	return nil
 }
 
 func addMessageToChat(w fyne.Window, scrollContainer *customScroller, pkSender asymmetric.IPubKey, msgBody *models.MessageBody, toTop bool) {

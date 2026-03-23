@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 
+	"github.com/number571/fuckoff-gov/internal/consts"
 	"github.com/number571/fuckoff-gov/internal/crypto"
 	"github.com/number571/fuckoff-gov/internal/models"
+	"github.com/number571/fuckoff-gov/internal/strings"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
 )
@@ -87,6 +90,12 @@ func (p *sDecoder) ChannelInfo(pubKeyCreator asymmetric.IPubKey, channelInfo *mo
 	if err != nil {
 		return nil, "", err
 	}
+	if len(decName) > consts.MaxChannelName {
+		return nil, "", fmt.Errorf("size name > max(%d)", consts.MaxChannelName)
+	}
+	if strings.HasNotGraphicCharacters(string(decName)) {
+		return nil, "", errors.New("name has non graphical chars")
+	}
 
 	pkHashes := make([]string, 0, len(channelInfo.EncList))
 	for _, v := range channelInfo.EncList {
@@ -108,6 +117,8 @@ func (p *sDecoder) MessageInfo(pubKeyCreator asymmetric.IPubKey, key []byte, mes
 	if err := json.Unmarshal(decMsg, msgBody); err != nil {
 		return nil, err
 	}
-	// TODO: check name graphic chars
+	if !msgBody.Validate() {
+		return nil, errors.New("invalid message body")
+	}
 	return msgBody, nil
 }

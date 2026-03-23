@@ -9,8 +9,8 @@ import (
 
 type IEncoder interface {
 	InitClient() *models.ClientInfo
-	InitChannel(name string, pubKeys []asymmetric.IPubKey) *models.ChannelInfo
-	PushMessage(chanID string, key []byte, msgBody *models.MessageBody) *models.MessageInfo
+	InitChannel(name string, pubKeys []asymmetric.IPubKey) (*models.ChannelInfo, error)
+	PushMessage(chanID string, key []byte, msgBody *models.MessageBody) (*models.MessageInfo, error)
 }
 
 type IDecoder interface {

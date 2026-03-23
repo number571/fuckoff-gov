@@ -3,6 +3,8 @@ package models
 import (
 	"time"
 
+	"github.com/number571/fuckoff-gov/internal/consts"
+	"github.com/number571/fuckoff-gov/internal/strings"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
 	"github.com/number571/go-peer/pkg/crypto/puzzle"
@@ -79,6 +81,27 @@ type MessageBody struct {
 
 func (p *MessageInfo) GetHash() string {
 	return hashing.NewHMACHasher([]byte(p.ChanID), p.EncMsg).ToString()
+}
+
+func (p *MessageBody) Validate() bool {
+	if strings.HasNotGraphicCharacters(p.Sender) {
+		return false
+	}
+	if len(p.Sender) > consts.MaxNickNameSize {
+		return false
+	}
+	if len(p.Payload) > consts.MaxMessageSize {
+		return false
+	}
+	if p.Filename != "" {
+		if strings.HasNotGraphicCharacters(p.Filename) {
+			return false
+		}
+		if len(p.Filename) > consts.MaxFileNameSize {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *MessageInfo) Validate(workSize uint64, pubKey asymmetric.IPubKey) bool {

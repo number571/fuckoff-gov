@@ -662,12 +662,10 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					compressedContent = buf.Bytes()
 				}
 
-				if len(compressedContent) > consts.MaxMessageSize {
-					dialog.ShowError(fmt.Errorf("file size > max(%d)", consts.MaxMessageSize), w)
+				if err := pushMessage(ctx, currentChatChannel, filename, compressedContent); err != nil {
+					dialog.ShowError(err, w)
 					return
 				}
-
-				pushMessage(ctx, currentChatChannel, filename, compressedContent)
 				inputMessageEntry.SetText("")
 				w.Canvas().Focus(inputMessageEntry)
 			},
@@ -681,11 +679,10 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 		if content == "" {
 			return
 		}
-		if len(content) > consts.MaxMessageSize {
-			dialog.ShowError(fmt.Errorf("content size > max(%d)", consts.MaxMessageSize), w)
+		if err := pushMessage(ctx, currentChatChannel, "", []byte(content)); err != nil {
+			dialog.ShowError(err, w)
 			return
 		}
-		pushMessage(ctx, currentChatChannel, "", []byte(content))
 		inputMessageEntry.SetText("")
 		w.Canvas().Focus(inputMessageEntry)
 	})
