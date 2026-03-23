@@ -1,0 +1,102 @@
+package models
+
+import (
+	"time"
+
+	"github.com/number571/fuckoff-gov/internal/keys"
+	"github.com/number571/go-peer/pkg/crypto/asymmetric"
+	"github.com/number571/go-peer/pkg/crypto/hashing"
+	"github.com/number571/go-peer/pkg/crypto/puzzle"
+)
+
+type LocalData struct {
+	NickName    string                 `json:"nickname"`
+	PrivKey     string                 `json:"privkey"`
+	Connections map[string]struct{}    `json:"connections"`
+	BlackLists  [2]map[string]struct{} `json:"black_lists"`
+}
+
+type ClientInfo struct {
+	PubKey string `json:"pubkey"`
+	Proof  uint64 `json:"proof"`
+}
+
+func (p *ClientInfo) Validate(workSize uint64) bool {
+	pubKey := asymmetric.LoadPubKey(p.PubKey)
+	if pubKey == nil {
+		return false
+	}
+	if ok := keys.VerifyProofKey(workSize, p.Proof, pubKey); !ok {
+		return false
+	}
+	return true
+}
+
+type ChannelInfo struct {
+	ChanID  string             `json:"chanid"`
+	EncName []byte             `json:"encname"`
+	EncList []*ParticipantInfo `json:"enclist"`
+	Sign    []byte             `json:"sign"`
+	Proof   uint64             `json:"proof"`
+}
+
+type ParticipantInfo struct {
+	PkHash string `json:"pkhash"`
+	Encaps []byte `json:"encaps"`
+	EncKey []byte `json:"enckey"`
+}
+
+func (p *ChannelInfo) Validate(workSize uint64, pubKey asymmetric.IPubKey) bool {
+	if len(p.EncList) == 0 {
+		return false
+	}
+	if pubKey.GetHasher().ToString() != p.EncList[0].PkHash {
+		return false
+	}
+	ok := pubKey.GetDSAPubKey().VerifyBytes([]byte(p.ChanID), p.Sign)
+	if !ok {
+		return false
+	}
+	ok = puzzle.NewPoWPuzzle(workSize).VerifyBytes([]byte(p.ChanID), p.Proof)
+	if !ok {
+		return false
+	}
+	return true
+}
+
+type MessageInfo struct {
+	ChanID string `json:"chanid"` // TODO: delete?
+	PkHash string `json:"pkhash"` // TODO: pkHash into GetHash?
+	EncMsg []byte `json:"encmsg"`
+	Sign   []byte `json:"sign"`
+	Proof  uint64 `json:"proof"`
+}
+
+type MessageBody struct {
+	Filename  string    `json:"filename"`
+	Sender    string    `json:"sender"`
+	Payload   []byte    `json:"payload"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (p *MessageInfo) GetHash() string {
+	return hashing.NewHMACHasher([]byte(p.ChanID), p.EncMsg).ToString()
+}
+
+func (p *MessageInfo) Validate(workSize uint64, pubKey asymmetric.IPubKey) bool {
+	hash := []byte(p.GetHash())
+
+	if p.PkHash != pubKey.GetHasher().ToString() {
+		return false
+	}
+
+	if ok := pubKey.GetDSAPubKey().VerifyBytes(hash, p.Sign); !ok {
+		return false
+	}
+
+	if ok := puzzle.NewPoWPuzzle(workSize).VerifyBytes(hash, p.Proof); !ok {
+		return false
+	}
+
+	return true
+}
