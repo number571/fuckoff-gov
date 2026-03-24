@@ -19,7 +19,8 @@ import (
 )
 
 var (
-	gClient = newClient(os.Args[1])
+	gClient   = newLocalDataClient(os.Args[1])
+	gChannels = newChannelsList()
 )
 
 var (
@@ -371,6 +372,7 @@ func addChannelIntoList(ctx context.Context, channelInfo *models.ChannelInfo) er
 	}
 
 	gChannels.addChannel(&sChannel{
+		isFavorite: gClient.isFavoriteChannel(channelInfo.ChanID),
 		chanID:     channelInfo.ChanID,
 		key:        key,
 		aliasName:  name,

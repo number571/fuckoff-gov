@@ -185,10 +185,10 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 		},
 	)
 
-	blockButton := widget.NewButtonWithIcon("Block chat", theme.CancelIcon(), func() {
+	blockButton := widget.NewButtonWithIcon("Delete chat", theme.CancelIcon(), func() {
 		dialog.ShowConfirm(
-			"Blocking chat...",
-			"Are you sure you want to block this chat?",
+			"Deleting chat...",
+			"Are you sure you want to delete this chat?",
 			func(ok bool) {
 				if !ok {
 					return
@@ -200,25 +200,12 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 	})
 	blockButton.Importance = widget.DangerImportance
 
-	favoriteButton := widget.NewButtonWithIcon("Favorite chat", theme.ConfirmIcon(), func() {
-		dialog.ShowConfirm(
-			"Chat to favorite...",
-			"Are you sure you want set this chat to favorite list?",
-			func(ok bool) {
-				if !ok {
-					return
-				}
-				setChatListContent(w)
-			},
-			w,
-		)
-	})
-	favoriteButton.Importance = widget.HighImportance
+	favoriteChanButton = widget.NewButtonWithIcon("Favorite chat", theme.ConfirmIcon(), func() {})
 
 	buttonsGrid := container.NewGridWithColumns(
 		2,
 		blockButton,
-		favoriteButton,
+		favoriteChanButton,
 	)
 
 	content := container.New(
@@ -763,6 +750,7 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 }
 
 func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
+	// TODO: race condition!
 	chatList := widget.NewList(
 		func() int {
 			return gChannels.getLength()
@@ -774,6 +762,11 @@ func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			channel := gChannels.getChannels()[i]
 
 			buttonName := item.(*fyne.Container).Objects[0].(*widget.Button)
+			if channel.isFavorite {
+				buttonName.Importance = widget.HighImportance
+			} else {
+				buttonName.Importance = widget.MediumImportance
+			}
 			buttonName.SetText(fmt.Sprintf("%s [%s]", channel.aliasName, cutHash384(channel.chanID)))
 			buttonName.OnTapped = func() { setChatChanContent(ctx, w, channel) }
 		},

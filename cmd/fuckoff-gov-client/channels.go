@@ -1,12 +1,14 @@
 package main
 
 import (
+	"slices"
 	"sync"
 
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 )
 
 type sChannel struct {
+	isFavorite bool
 	chanID     string
 	key        []byte
 	aliasName  string
@@ -28,6 +30,21 @@ func newChannelsList() *sChannelsList {
 	}
 }
 
+func (p *sChannelsList) sortByFavorites() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	slices.SortFunc(p.l, func(a, b *sChannel) int {
+		if !a.isFavorite && b.isFavorite {
+			return 1
+		}
+		if a.isFavorite && !b.isFavorite {
+			return -1
+		}
+		return 0
+	})
+}
+
 func (p *sChannelsList) addChannel(ch *sChannel) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -37,7 +54,12 @@ func (p *sChannelsList) addChannel(ch *sChannel) bool {
 	}
 	p.m[ch.chanID] = struct{}{}
 
-	p.l = append(p.l, ch)
+	if ch.isFavorite {
+		p.l = append([]*sChannel{ch}, p.l...)
+	} else {
+		p.l = append(p.l, ch)
+	}
+
 	return true
 }
 

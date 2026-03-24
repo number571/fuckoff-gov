@@ -23,6 +23,7 @@ import (
 )
 
 var (
+	favoriteChanButton    *widget.Button
 	inputNameEntry        *widget.Entry
 	inputPkHashEntry      *widget.Entry
 	inputChannelNameEntry *widget.Entry
@@ -49,7 +50,6 @@ type sConnection struct {
 
 var (
 	gParticipants = []string{}
-	gChannels     = newChannelsList()
 )
 
 func setChatSearchContent(w fyne.Window, channel *sChannel) {
@@ -62,6 +62,62 @@ func setChatSearchContent(w fyne.Window, channel *sChannel) {
 func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 	clearAfterSwitch()
 	currentChatChannel = channel
+
+	if currentChatChannel.isFavorite {
+		favoriteChanButton.Icon = theme.CancelIcon()
+		favoriteChanButton.Importance = widget.MediumImportance
+	} else {
+		favoriteChanButton.Icon = theme.ConfirmIcon()
+		favoriteChanButton.Importance = widget.HighImportance
+	}
+
+	favoriteChanButton.OnTapped = func() {
+		if currentChatChannel.isFavorite {
+			dialog.ShowConfirm(
+				"Delete from favorite...",
+				"Are you sure you want to delete this chat from favorite list?",
+				func(ok bool) {
+					if !ok {
+						return
+					}
+
+					if err := gClient.delFavoriteChannel(currentChatChannel.chanID); err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+
+					currentChatChannel.isFavorite = false
+					favoriteChanButton.Importance = widget.HighImportance
+					gChannels.sortByFavorites()
+
+					setChatSettingsContent(w, currentChatChannel)
+				},
+				w,
+			)
+		} else {
+			dialog.ShowConfirm(
+				"Add to favorite...",
+				"Are you sure you want add this chat to favorite list?",
+				func(ok bool) {
+					if !ok {
+						return
+					}
+
+					if err := gClient.setFavoriteChannel(currentChatChannel.chanID); err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+
+					currentChatChannel.isFavorite = true
+					favoriteChanButton.Importance = widget.MediumImportance
+					gChannels.sortByFavorites()
+
+					setChatSettingsContent(w, currentChatChannel)
+				},
+				w,
+			)
+		}
+	}
 
 	w.SetContent(chatSettingsContainer)
 }
