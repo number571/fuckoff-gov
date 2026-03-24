@@ -63,6 +63,24 @@ func (p *sChannelsList) addChannel(ch *sChannel) bool {
 	return true
 }
 
+func (p *sChannelsList) delChannel(chanID string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if _, ok := p.m[chanID]; !ok {
+		return false
+	}
+
+	for i, v := range p.l {
+		if v.chanID == chanID {
+			p.l = append(p.l[:i], p.l[i+1:]...)
+			delete(p.m, chanID)
+			break
+		}
+	}
+
+	return true
+}
 func (p *sChannelsList) getChannels() []*sChannel {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"fmt"
 	"image/color"
 	"image/jpeg"
@@ -27,7 +28,6 @@ var (
 	inputNameEntry        *widget.Entry
 	inputPkHashEntry      *widget.Entry
 	inputChannelNameEntry *widget.Entry
-	inputConnectionEntry  *widget.Entry
 	inputChatSearchEntry  *widget.Entry
 	inputMessageEntry     *widget.Entry
 	scrollChatContainer   *customScroller
@@ -44,8 +44,9 @@ var (
 )
 
 type sConnection struct {
-	online  bool
-	address string
+	online bool
+	id     string
+	cert   *x509.Certificate
 }
 
 var (
@@ -57,6 +58,7 @@ func setChatSearchContent(w fyne.Window, channel *sChannel) {
 	currentChatChannel = channel
 
 	w.SetContent(chatSearchContainer)
+	w.Canvas().Focus(inputChatSearchEntry)
 }
 
 func setChatSettingsContent(w fyne.Window, channel *sChannel) {
@@ -81,7 +83,7 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 						return
 					}
 
-					if err := gClient.delFavoriteChannel(currentChatChannel.chanID); err != nil {
+					if err := gClient.unsetFavoriteChannel(currentChatChannel.chanID); err != nil {
 						dialog.ShowError(err, w)
 						return
 					}
@@ -134,7 +136,6 @@ func setConnectionsContent(ctx context.Context, w fyne.Window) {
 	pingConnections(ctx)
 
 	w.SetContent(connectionsContainer)
-	w.Canvas().Focus(inputConnectionEntry)
 
 	go func() {
 		fyne.Do(func() {
@@ -179,7 +180,6 @@ func clearAfterSwitch() {
 	startSearchIndexReader = 0
 	inputChatSearchEntry.SetText("")
 	inputChannelNameEntry.SetText("")
-	inputConnectionEntry.SetText("")
 	inputPkHashEntry.SetText("")
 	inputMessageEntry.SetText("")
 	scrollChatContainer.messages = make(map[string]struct{}, 4096)
@@ -193,7 +193,7 @@ func clearAfterSwitch() {
 
 func pingConnections(ctx context.Context) {
 	for _, c := range gClient.getConnections() {
-		c.online = (newConn(c.address).Ping(ctx) == nil)
+		c.online = (newConn(c.cert).Ping(ctx) == nil)
 	}
 }
 
@@ -267,7 +267,7 @@ func addMessageToChat(w fyne.Window, scrollContainer *customScroller, pkSender a
 }
 
 func isAtBottom(scroll *customScroller) bool {
-	diff := float32(200)
+	diff := float32(400)
 	maxY := scroll.Content.MinSize().Height - scroll.Size().Height - diff
 	if maxY <= 0 {
 		return true

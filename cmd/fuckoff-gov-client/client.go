@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/number571/fuckoff-gov/internal/database"
 	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
+	"github.com/number571/go-peer/pkg/crypto/hashing"
 	"github.com/number571/go-peer/pkg/crypto/random"
 	gp_database "github.com/number571/go-peer/pkg/storage/database"
 )
@@ -51,7 +55,7 @@ func (p *sClient) init() error {
 		ld = &models.LocalData{
 			NickName:              fmt.Sprintf("client-%x", random.NewRandom().GetBytes(8)),
 			PrivKey:               asymmetric.NewPrivKey().ToString(),
-			Connections:           make(map[string]struct{}),
+			Connections:           make(map[string][]byte),
 			FavoriteChannels:      make(map[string]struct{}),
 			BlackListChannels:     make(map[string]struct{}),
 			BlackListParticipants: make(map[string]struct{}),
@@ -75,21 +79,32 @@ func (p *sClient) init() error {
 	p.encoder = client.NewEncoder(works, p.sk)
 	p.decoder = client.NewDecoder(works, p.sk)
 
-	// TODO: delete
-	p.ld.Connections["http://localhost:8080"] = struct{}{}
-	p.connects = append(p.connects, &sConnection{address: "http://localhost:8080"})
+	// // TODO: delete
+	// certBytes, err := os.ReadFile("./cert.pem")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// cert, err := bytesToCert(certBytes)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// certID := getCertID(cert)
+	// p.ld.Connections[certID] = certBytes
+	// p.connects = append(p.connects, &sConnection{id: certID, cert: cert})
 
 	return nil
 }
 
-func (p *sClient) delConnection(addr string) error {
+func (p *sClient) addConnection(cert *x509.Certificate) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if _, ok := p.ld.Connections[addr]; !ok {
+	certID := getCertID(cert)
+	if _, ok := p.ld.Connections[certID]; ok {
 		return nil
 	}
-	delete(p.ld.Connections, addr)
+	p.ld.Connections[certID] = certToBytes(cert)
 
 	if err := gClient.db.SetLocalData(p.ld); err != nil {
 		return err
@@ -99,29 +114,28 @@ func (p *sClient) delConnection(addr string) error {
 	return nil
 }
 
-func (p *sClient) addConnection(addr string) error {
+func (p *sClient) delConnection(id string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if _, ok := p.ld.Connections[addr]; ok {
+	if _, ok := p.ld.Connections[id]; !ok {
 		return nil
 	}
+	delete(p.ld.Connections, id)
 
 	if err := gClient.db.SetLocalData(p.ld); err != nil {
 		return err
 	}
 
-	p.ld.Connections[addr] = struct{}{}
 	p.connects = p.mapConnsToList()
-
 	return nil
 }
 
-func (p *sClient) inConnections(c *sConnection) bool {
+func (p *sClient) inConnections(id string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	_, ok := p.ld.Connections[c.address]
+	_, ok := p.ld.Connections[id]
 	return ok
 }
 
@@ -137,6 +151,7 @@ func (p *sClient) setNickName(nn string) error {
 	defer p.mu.Unlock()
 
 	p.ld.NickName = nn
+
 	if err := gClient.db.SetLocalData(p.ld); err != nil {
 		return err
 	}
@@ -153,11 +168,15 @@ func (p *sClient) getNickName() string {
 
 func (p *sClient) mapConnsToList() []*sConnection {
 	connects := make([]*sConnection, 0, len(p.ld.Connections))
-	for k := range p.ld.Connections {
-		connects = append(connects, &sConnection{address: k})
+	for id, certBytes := range p.ld.Connections {
+		cert, err := bytesToCert(certBytes)
+		if err != nil {
+			panic(err)
+		}
+		connects = append(connects, &sConnection{id: id, cert: cert})
 	}
 	slices.SortFunc(connects, func(v1, v2 *sConnection) int {
-		return strings.Compare(v1.address, v2.address)
+		return strings.Compare(v1.id, v2.id)
 	})
 	return connects
 }
@@ -175,6 +194,7 @@ func (p *sClient) setBlockedChannel(chanID string) error {
 	defer p.mu.Unlock()
 
 	p.ld.BlackListChannels[chanID] = struct{}{}
+
 	if err := gClient.db.SetLocalData(p.ld); err != nil {
 		return err
 	}
@@ -195,6 +215,7 @@ func (p *sClient) setFavoriteChannel(chanID string) error {
 	defer p.mu.Unlock()
 
 	p.ld.FavoriteChannels[chanID] = struct{}{}
+
 	if err := gClient.db.SetLocalData(p.ld); err != nil {
 		return err
 	}
@@ -202,14 +223,47 @@ func (p *sClient) setFavoriteChannel(chanID string) error {
 	return nil
 }
 
-func (p *sClient) delFavoriteChannel(chanID string) error {
+func (p *sClient) unsetFavoriteChannel(chanID string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if _, ok := p.ld.FavoriteChannels[chanID]; !ok {
+		return nil
+	}
 	delete(p.ld.FavoriteChannels, chanID)
+
 	if err := gClient.db.SetLocalData(p.ld); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func bytesToCert(certBytes []byte) (*x509.Certificate, error) {
+	block, _ := pem.Decode(certBytes)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, errors.New("invalid certificate block") // TODO:
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	if len(cert.IPAddresses) == 0 && len(cert.DNSNames) == 0 {
+		return nil, errors.New("undefined host")
+	}
+	if len(cert.Subject.Organization) == 0 {
+		return nil, errors.New("undefined port")
+	}
+	if _, err := strconv.Atoi(cert.Subject.Organization[0]); err != nil {
+		return nil, errors.New("invalid port")
+	}
+	return cert, nil
+}
+
+func certToBytes(cert *x509.Certificate) []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+}
+
+func getCertID(cert *x509.Certificate) string {
+	return hashing.NewHasher(cert.Raw).ToString()
 }

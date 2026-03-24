@@ -174,7 +174,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 							return
 						}
 						gParticipants = append(gParticipants[:i], gParticipants[i+1:]...)
-						setEditChannelsContent(w)
+						setChatSettingsContent(w, currentChatChannel)
 					},
 					w,
 				)
@@ -185,26 +185,36 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 		},
 	)
 
-	blockButton := widget.NewButtonWithIcon("Delete chat", theme.CancelIcon(), func() {
+	deleteButton := widget.NewButtonWithIcon("Delete chat", theme.CancelIcon(), func() {
 		dialog.ShowConfirm(
 			"Deleting chat...",
 			"Are you sure you want to delete this chat?",
 			func(ok bool) {
+				chanID := currentChatChannel.chanID
 				if !ok {
 					return
 				}
+				if err := gClient.setBlockedChannel(chanID); err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+				if err := gClient.db.DelChannel(chanID); err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+				gChannels.delChannel(chanID)
 				setChatListContent(w)
 			},
 			w,
 		)
 	})
-	blockButton.Importance = widget.DangerImportance
+	deleteButton.Importance = widget.DangerImportance
 
-	favoriteChanButton = widget.NewButtonWithIcon("Favorite chat", theme.ConfirmIcon(), func() {})
+	favoriteChanButton = widget.NewButton("Favorite chat", func() {})
 
 	buttonsGrid := container.NewGridWithColumns(
 		2,
-		blockButton,
+		deleteButton,
 		favoriteChanButton,
 	)
 
@@ -443,6 +453,16 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 			return
 		}
 
+		if err := gClient.db.SetChannel(channelInfo); err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+
+		if err := addChannelIntoList(ctx, channelInfo); err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+
 		dialog.ShowInformation("New channel", "Channel success created!", w)
 		setEditChannelsContent(w)
 	})
@@ -503,7 +523,7 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 			)
 		},
 		func(i widget.ListItemID, item fyne.CanvasObject) {
-			connection := gClient.getConnections()[i]
+			c := gClient.getConnections()[i]
 
 			deleteButton := item.(*fyne.Container).Objects[0].(*widget.Button)
 			deleteButton.OnTapped = func() {
@@ -514,7 +534,7 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 						if !ok {
 							return
 						}
-						gClient.delConnection(connection.address)
+						gClient.delConnection(c.id)
 						setConnectionsContent(ctx, w)
 					},
 					w,
@@ -522,14 +542,14 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 			}
 
 			buttonName := item.(*fyne.Container).Objects[1].(*widget.Button)
-			buttonName.SetText(connection.address)
+			buttonName.SetText(cutHash384(c.id))
 
-			if connection.online {
+			if c.online {
 				buttonName.Importance = widget.SuccessImportance
 			}
 
 			buttonName.OnTapped = func() {
-				a.Clipboard().SetContent(connection.address)
+				a.Clipboard().SetContent(string(certToBytes(c.cert)))
 				dialog.ShowInformation(
 					"Copying a connection...",
 					"The connection has been successfully copied to the clipboard",
@@ -556,35 +576,54 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 		scrollLoggerLabel,
 	)
 
-	inputConnectionEntry = widget.NewEntry()
-	inputConnectionEntry.SetPlaceHolder("Type a connection...")
+	connectionLoadButton := widget.NewButtonWithIcon("Load certificate", theme.FileIcon(), func() {
+		fileOpenDialog := dialog.NewFileOpen(
+			func(reader fyne.URIReadCloser, err error) {
+				if err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+				if reader == nil {
+					return
+				}
+				defer reader.Close()
 
-	sendButton := widget.NewButtonWithIcon(
-		"",
-		theme.MailForwardIcon(),
-		func() {
-			connection := inputConnectionEntry.Text
-			inputConnectionEntry.SetText("")
-			gClient.addConnection(connection)
-			setConnectionsContent(ctx, w)
-		},
-	)
+				certBytes, err := io.ReadAll(reader)
+				if err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
 
-	inputConnectionEntry.OnSubmitted = func(s string) {
-		sendButton.Tapped(nil)
-	}
+				cert, err := bytesToCert(certBytes)
+				if err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
 
-	inputEntrySendButton := container.New(
-		layout.NewBorderLayout(nil, nil, nil, sendButton),
-		inputConnectionEntry,
-		sendButton,
-	)
+				clientInfo, err := initLocalClient()
+				if err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+
+				if err := newConn(cert).InitClient(ctx, clientInfo); err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+
+				gClient.addConnection(cert)
+				setConnectionsContent(ctx, w)
+			},
+			w,
+		)
+		fileOpenDialog.Show()
+	})
 
 	content := container.New(
-		layout.NewBorderLayout(header, inputEntrySendButton, nil, nil),
+		layout.NewBorderLayout(header, connectionLoadButton, nil, nil),
 		header,
 		gridBody,
-		inputEntrySendButton,
+		connectionLoadButton,
 	)
 
 	minSizeTarget := canvas.NewRectangle(color.Transparent)
@@ -851,6 +890,10 @@ func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
 		index := int64(*s.startIndexReader)
 		if readUntil >= 0 {
 			*s.startIndexReader = uint64(readUntil)
+		}
+
+		if *s.startIndexReader == 0 && readUntil == -1 {
+			index = -1
 		}
 
 		for index > readUntil {

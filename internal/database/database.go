@@ -136,6 +136,35 @@ func (p *sDatabase) GetChannel(chanID string) (*models.ChannelInfo, error) {
 	return channelInfo, nil
 }
 
+func (p *sDatabase) DelChannel(chanID string) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if _, err := p.db.Get(keyChannel(chanID)); err != nil {
+		return err
+	}
+
+	count, err := p.getCountChannelMessages(chanID)
+	if err != nil {
+		return err
+	}
+
+	for i := range count {
+		msgHash, err := p.db.Get(keyChannelMessage(chanID, i))
+		if err != nil {
+			if errors.Is(err, database.ErrNotFound) {
+				continue
+			}
+			return err
+		}
+		_ = p.db.Del(keyMessage(string(msgHash)))
+		_ = p.db.Del(keyChannelMessage(chanID, i))
+	}
+
+	_ = p.db.Del(keyChannelsMessageCount(chanID))
+	return p.db.Del(keyChannel(chanID))
+}
+
 func (p *sDatabase) GetCountClientChannels(pkHash string) (uint64, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

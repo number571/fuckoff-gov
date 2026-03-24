@@ -13,7 +13,7 @@ import (
 type LocalData struct {
 	NickName              string              `json:"nickname"`
 	PrivKey               string              `json:"privkey"`
-	Connections           map[string]struct{} `json:"connections"`
+	Connections           map[string][]byte   `json:"connections"`
 	FavoriteChannels      map[string]struct{} `json:"favorite_channels"`
 	BlackListChannels     map[string]struct{} `json:"blacklist_channels"`
 	BlackListParticipants map[string]struct{} `json:"blacklist_participants"`

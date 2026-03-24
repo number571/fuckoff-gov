@@ -13,6 +13,7 @@ type IDatabase interface {
 
 	SetChannel(channelInfo *models.ChannelInfo) error
 	GetChannel(chanID string) (*models.ChannelInfo, error)
+	DelChannel(chanID string) error
 
 	GetCountClientChannels(pkHash string) (uint64, error)
 	GetClientChanIDByIndex(pkHash string, index uint64) (string, error)

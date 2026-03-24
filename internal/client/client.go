@@ -141,6 +141,7 @@ func (p *sClient) ListenChannel(ctx context.Context, pkhash string, index uint64
 			continue
 		}
 		if rsp.StatusCode != http.StatusOK {
+			rsp.Body.Close()
 			return nil, fmt.Errorf("bad status code: %d (listenChannel)", rsp.StatusCode)
 		}
 		chanID, err := io.ReadAll(rsp.Body)

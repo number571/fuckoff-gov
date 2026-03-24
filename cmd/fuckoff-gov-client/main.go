@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -87,6 +90,14 @@ func runChannelsListener(ctx context.Context, w fyne.Window) {
 			fyne.Do(func() { dialog.ShowError(err, w) })
 			return
 		}
+		if gClient.isBlockedChannel(chanID) {
+			err := gClient.db.DelChannel(chanID)
+			if err == nil || errors.Is(err, gp_database.ErrNotFound) {
+				continue
+			}
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
 		channelInfo, err := gClient.db.GetChannel(chanID)
 		if err != nil {
 			fyne.Do(func() { dialog.ShowError(err, w) })
@@ -108,10 +119,10 @@ func runChannelsListener(ctx context.Context, w fyne.Window) {
 	connsMapper := make(map[string]struct{})
 	for {
 		for _, c := range gClient.getConnections() {
-			if _, ok := connsMapper[c.address]; ok {
+			if _, ok := connsMapper[c.id]; ok {
 				continue
 			}
-			connsMapper[c.address] = struct{}{}
+			connsMapper[c.id] = struct{}{}
 			go runChannelsListenerOnConnection(ctx, c, pkHash)
 		}
 		select {
@@ -179,10 +190,10 @@ func runMessagesListener(ctx context.Context, w fyne.Window, channel *sChannel) 
 	connsMapper := make(map[string]struct{})
 	for {
 		for _, c := range gClient.getConnections() {
-			if _, ok := connsMapper[c.address]; ok {
+			if _, ok := connsMapper[c.id]; ok {
 				continue
 			}
-			connsMapper[c.address] = struct{}{}
+			connsMapper[c.id] = struct{}{}
 			go runMessagesListenerOnConnection(ctx, w, channel, c)
 		}
 		select {
@@ -194,7 +205,7 @@ func runMessagesListener(ctx context.Context, w fyne.Window, channel *sChannel) 
 }
 
 func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel *sChannel, c *sConnection) {
-	appClient := newConn(c.address)
+	appClient := newConn(c.cert)
 
 	for {
 		select {
@@ -203,7 +214,7 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 		default:
 		}
 
-		if !gClient.inConnections(c) {
+		if !gClient.inConnections(c.id) {
 			return
 		}
 
@@ -229,6 +240,9 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 				return
 			default:
 			}
+			if gClient.isBlockedChannel(channel.chanID) {
+				return
+			}
 			messageInfo, err := appClient.ListenMessage(ctx, channel.chanID, counter)
 			if err != nil {
 				if !errors.Is(err, context.Canceled) {
@@ -252,7 +266,6 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 			msgBody, err := gClient.decoder.MessageInfo(pubKey, channel.key, messageInfo)
 			if err != nil {
 				fyne.Do(func() { printLog(logErro, err) })
-				timeSleep(ctx, time.Second)
 				continue
 			}
 			if err := gClient.db.AddChannelMessage(messageInfo); err != nil {
@@ -271,11 +284,11 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 }
 
 func runChannelsListenerOnConnection(ctx context.Context, c *sConnection, pkHash string) {
-	appClient := newConn(c.address)
+	appClient := newConn(c.cert)
 	counter := uint64(0)
 
 	for {
-		if !gClient.inConnections(c) {
+		if !gClient.inConnections(c.id) {
 			return
 		}
 
@@ -286,6 +299,10 @@ func runChannelsListenerOnConnection(ctx context.Context, c *sConnection, pkHash
 			continue
 		}
 
+		if gClient.isBlockedChannel(channelInfo.ChanID) {
+			counter++
+			continue
+		}
 		_, err = gClient.db.GetChannel(channelInfo.ChanID)
 		if err == nil {
 			counter++
@@ -297,13 +314,19 @@ func runChannelsListenerOnConnection(ctx context.Context, c *sConnection, pkHash
 			continue
 		}
 
-		if err := addChannelIntoList(ctx, channelInfo); err != nil {
+		if err := initRemoteChannel(ctx, channelInfo); err != nil {
 			fyne.Do(func() { printLog(logErro, err) })
 			timeSleep(ctx, time.Second)
 			continue
 		}
 
 		if err := gClient.db.SetChannel(channelInfo); err != nil {
+			fyne.Do(func() { printLog(logErro, err) })
+			timeSleep(ctx, time.Second)
+			continue
+		}
+
+		if err := addChannelIntoList(ctx, channelInfo); err != nil {
 			fyne.Do(func() { printLog(logErro, err) })
 			timeSleep(ctx, time.Second)
 			continue
@@ -319,7 +342,7 @@ func initRemoteChannel(ctx context.Context, channelInfo *models.ChannelInfo) err
 		hasSuccess bool
 	)
 	for _, c := range gClient.getConnections() {
-		if err := newConn(c.address).InitChannel(ctx, channelInfo); err != nil {
+		if err := newConn(c.cert).InitChannel(ctx, channelInfo); err != nil {
 			lastErr = err
 			continue
 		}
@@ -342,9 +365,6 @@ func initLocalChannel(ctx context.Context, chanName string, pkHashes []string) (
 	}
 	channelInfo, err := gClient.encoder.InitChannel(chanName, pubKeys)
 	if err != nil {
-		return nil, err
-	}
-	if err := addChannelIntoList(ctx, channelInfo); err != nil {
 		return nil, err
 	}
 	return channelInfo, nil
@@ -405,13 +425,13 @@ func initRemoteClient(ctx context.Context, clientInfo *models.ClientInfo) {
 	connsMapper := make(map[string]struct{})
 	for {
 		for _, c := range gClient.getConnections() {
-			if _, ok := connsMapper[c.address]; ok {
+			if _, ok := connsMapper[c.id]; ok {
 				continue
 			}
-			connsMapper[c.address] = struct{}{}
+			connsMapper[c.id] = struct{}{}
 			go func() {
 				for {
-					if err := newConn(c.address).InitClient(ctx, clientInfo); err != nil {
+					if err := newConn(c.cert).InitClient(ctx, clientInfo); err != nil {
 						fyne.Do(func() { printLog(logErro, err) })
 						timeSleep(ctx, time.Minute)
 						continue
@@ -434,7 +454,7 @@ func pushRemoteMessage(ctx context.Context, messageInfo *models.MessageInfo) err
 		hasSuccess bool
 	)
 	for _, c := range gClient.getConnections() {
-		if err := newConn(c.address).PushMessage(ctx, messageInfo); err != nil {
+		if err := newConn(c.cert).PushMessage(ctx, messageInfo); err != nil {
 			lastErr = err
 			continue
 		}
@@ -460,7 +480,7 @@ func getClientInfo(ctx context.Context, pkHash string) (asymmetric.IPubKey, *mod
 	}
 	var lastErr error
 	for _, c := range gClient.getConnections() {
-		clientInfo, err := newConn(c.address).LoadClient(ctx, pkHash)
+		clientInfo, err := newConn(c.cert).LoadClient(ctx, pkHash)
 		if err != nil {
 			lastErr = err
 			continue
@@ -507,6 +527,27 @@ func binarySearchCounter(ctx context.Context, channel *sChannel, appClient clien
 	return uint64(result), nil
 }
 
-func newConn(addr string) client.IClient {
-	return client.NewClient(addr, &http.Client{Timeout: 30 * time.Second})
+func newConn(cert *x509.Certificate) client.IClient {
+	caCertPool := x509.NewCertPool()
+	if ok := caCertPool.AppendCertsFromPEM(certToBytes(cert)); !ok {
+		panic("Failed to append CA cert to pool")
+	}
+	return client.NewClient(
+		fmt.Sprintf("https://%s:%s", getAddrFromCert(cert), cert.Subject.Organization[0]),
+		&http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs: caCertPool,
+				},
+			},
+		},
+	)
+}
+
+func getAddrFromCert(cert *x509.Certificate) string {
+	if len(cert.DNSNames) != 0 {
+		return cert.DNSNames[0]
+	}
+	return cert.IPAddresses[0].String()
 }
