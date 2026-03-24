@@ -4,10 +4,7 @@ import (
 	"github.com/number571/fuckoff-gov/internal/models"
 )
 
-type IDatabase interface {
-	GetLocalData() (*models.LocalData, error)
-	SetLocalData(localData *models.LocalData) error
-
+type ICommonDatabase interface {
 	SetClient(clientInfo *models.ClientInfo) error
 	GetClient(pkHash string) (*models.ClientInfo, error)
 

@@ -20,13 +20,18 @@ type IDecoder interface {
 }
 
 type IClient interface {
+	// NON AUTH METHODS:
+
 	Ping(ctx context.Context) error
+	Auth(ctx context.Context) error
 
 	InitClient(ctx context.Context, clientInfo *models.ClientInfo) error
 	LoadClient(ctx context.Context, pkhash string) (*models.ClientInfo, error)
 
-	CountChannels(ctx context.Context, pkhash string) (uint64, error)
-	ListenChannel(ctx context.Context, pkhash string, index uint64) (*models.ChannelInfo, error)
+	// AUTH METHODS:
+
+	CountChannels(ctx context.Context) (uint64, error)
+	ListenChannel(ctx context.Context, index uint64) (*models.ChannelInfo, error)
 
 	InitChannel(ctx context.Context, channelInfo *models.ChannelInfo) error
 	LoadChannel(ctx context.Context, chanID string) (*models.ChannelInfo, error)

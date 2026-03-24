@@ -16,13 +16,17 @@ import (
 	"os"
 	"time"
 
-	"github.com/number571/fuckoff-gov/internal/database"
+	"github.com/number571/fuckoff-gov/internal/database/serverside"
 )
 
 var (
 	externalAddr string
 	listenPort   string
-	db           database.IDatabase
+)
+
+var (
+	db serverside.IServerDatabase
+	sk []byte
 )
 
 var (
@@ -39,7 +43,12 @@ func init() {
 	listenPort = os.Args[2]
 
 	var err error
-	db, err = database.OpenDatabase(os.Args[3])
+	db, err = serverside.OpenServerDatabase(os.Args[3])
+	if err != nil {
+		panic(err)
+	}
+
+	sk, err = db.GetSecretKey()
 	if err != nil {
 		panic(err)
 	}
@@ -47,6 +56,7 @@ func init() {
 	if err := tryGenerateKeyFiles(externalAddr, listenPort); err != nil {
 		panic(err)
 	}
+
 }
 
 func tryGenerateKeyFiles(externalAddr, listenPort string) error {
@@ -121,6 +131,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/ping", handlePing)
+	mux.HandleFunc("/auth", handleAuth)
 
 	mux.HandleFunc("/client/init", handleClientInit)
 	mux.HandleFunc("/client/load", handleClientLoad)

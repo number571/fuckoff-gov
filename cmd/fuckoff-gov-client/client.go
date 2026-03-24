@@ -1,18 +1,21 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/number571/fuckoff-gov/internal/client"
 	"github.com/number571/fuckoff-gov/internal/consts"
-	"github.com/number571/fuckoff-gov/internal/database"
+	"github.com/number571/fuckoff-gov/internal/database/clientside"
 	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
@@ -23,7 +26,7 @@ import (
 type sClient struct {
 	mu       *sync.RWMutex
 	path     string
-	db       database.IDatabase
+	db       clientside.IClientDatabase
 	sk       asymmetric.IPrivKey
 	encoder  client.IEncoder
 	decoder  client.IDecoder
@@ -40,19 +43,22 @@ func newLocalDataClient(path string) *sClient {
 }
 
 func (p *sClient) init() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	var err error
 
-	p.db, err = database.OpenDatabase(p.path)
+	p.db, err = clientside.OpenClientDatabase(p.path)
 	if err != nil {
 		return err
 	}
 
-	ld, err := p.db.GetLocalData()
+	p.ld, err = p.db.GetLocalData()
 	if err != nil {
 		if !errors.Is(err, gp_database.ErrNotFound) {
 			return err
 		}
-		ld = &models.LocalData{
+		p.ld = &models.LocalData{
 			NickName:              fmt.Sprintf("client-%x", random.NewRandom().GetBytes(8)),
 			PrivKey:               asymmetric.NewPrivKey().ToString(),
 			Connections:           make(map[string][]byte),
@@ -60,15 +66,13 @@ func (p *sClient) init() error {
 			BlackListChannels:     make(map[string]struct{}),
 			BlackListParticipants: make(map[string]struct{}),
 		}
-		if err := p.db.SetLocalData(ld); err != nil {
+		if err := p.db.SetLocalData(p.ld); err != nil {
 			return err
 		}
 	}
 
-	p.ld = ld
-
-	p.connects = p.mapConnsToList()
-	p.sk = asymmetric.LoadPrivKey(ld.PrivKey)
+	p.sk = asymmetric.LoadPrivKey(p.ld.PrivKey)
+	p.mapConnectsToList()
 
 	works := [3]uint64{
 		consts.WorkSizeClient,
@@ -79,39 +83,25 @@ func (p *sClient) init() error {
 	p.encoder = client.NewEncoder(works, p.sk)
 	p.decoder = client.NewDecoder(works, p.sk)
 
-	// // TODO: delete
-	// certBytes, err := os.ReadFile("./cert.pem")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// cert, err := bytesToCert(certBytes)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// certID := getCertID(cert)
-	// p.ld.Connections[certID] = certBytes
-	// p.connects = append(p.connects, &sConnection{id: certID, cert: cert})
-
 	return nil
 }
 
-func (p *sClient) addConnection(cert *x509.Certificate) error {
+func (p *sClient) addConnection(cert *x509.Certificate) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	certID := getCertID(cert)
 	if _, ok := p.ld.Connections[certID]; ok {
-		return nil
+		return certID, nil
 	}
 	p.ld.Connections[certID] = certToBytes(cert)
 
 	if err := gClient.db.SetLocalData(p.ld); err != nil {
-		return err
+		return "", err
 	}
 
-	p.connects = p.mapConnsToList()
-	return nil
+	p.mapConnectsToList()
+	return certID, nil
 }
 
 func (p *sClient) delConnection(id string) error {
@@ -127,7 +117,7 @@ func (p *sClient) delConnection(id string) error {
 		return err
 	}
 
-	p.connects = p.mapConnsToList()
+	p.mapConnectsToList()
 	return nil
 }
 
@@ -137,6 +127,18 @@ func (p *sClient) inConnections(id string) bool {
 
 	_, ok := p.ld.Connections[id]
 	return ok
+}
+
+func (p *sClient) getConnectionByID(id string) (*sConnection, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	for _, c := range p.connects {
+		if c.id == id {
+			return c, true
+		}
+	}
+	return nil, false
 }
 
 func (p *sClient) getConnections() []*sConnection {
@@ -166,19 +168,38 @@ func (p *sClient) getNickName() string {
 	return p.ld.NickName
 }
 
-func (p *sClient) mapConnsToList() []*sConnection {
-	connects := make([]*sConnection, 0, len(p.ld.Connections))
+func (p *sClient) mapConnectsToList() {
+	currentConnectsMap := make(map[string]*sConnection, len(p.connects))
+	for _, v := range p.connects {
+		currentConnectsMap[v.id] = v
+	}
+
+	resultConnectsList := make([]*sConnection, 0, len(p.ld.Connections))
 	for id, certBytes := range p.ld.Connections {
+		v, ok := currentConnectsMap[id]
+		if ok {
+			resultConnectsList = append(resultConnectsList, v)
+			continue
+		}
 		cert, err := bytesToCert(certBytes)
 		if err != nil {
 			panic(err)
 		}
-		connects = append(connects, &sConnection{id: id, cert: cert})
+		resultConnectsList = append(
+			resultConnectsList,
+			&sConnection{
+				id:     id,
+				cert:   cert,
+				client: newConn(cert, p.sk),
+			},
+		)
 	}
-	slices.SortFunc(connects, func(v1, v2 *sConnection) int {
+
+	slices.SortFunc(resultConnectsList, func(v1, v2 *sConnection) int {
 		return strings.Compare(v1.id, v2.id)
 	})
-	return connects
+
+	p.connects = resultConnectsList
 }
 
 func (p *sClient) isBlockedChannel(chanID string) bool {
@@ -266,4 +287,23 @@ func certToBytes(cert *x509.Certificate) []byte {
 
 func getCertID(cert *x509.Certificate) string {
 	return hashing.NewHasher(cert.Raw).ToString()
+}
+
+func newConn(cert *x509.Certificate, privKey asymmetric.IPrivKey) client.IClient {
+	caCertPool := x509.NewCertPool()
+	if ok := caCertPool.AppendCertsFromPEM(certToBytes(cert)); !ok {
+		panic("Failed to append CA cert to pool")
+	}
+	return client.NewClient(
+		fmt.Sprintf("https://%s:%s", getAddrFromCert(cert), cert.Subject.Organization[0]),
+		privKey,
+		&http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs: caCertPool,
+				},
+			},
+		},
+	)
 }

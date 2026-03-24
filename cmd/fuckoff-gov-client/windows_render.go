@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -19,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/number571/fuckoff-gov/internal/client"
 	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 )
@@ -47,6 +49,7 @@ type sConnection struct {
 	online bool
 	id     string
 	cert   *x509.Certificate
+	client client.IClient
 }
 
 var (
@@ -192,9 +195,19 @@ func clearAfterSwitch() {
 }
 
 func pingConnections(ctx context.Context) {
+	wg := &sync.WaitGroup{}
 	for _, c := range gClient.getConnections() {
-		c.online = (newConn(c.cert).Ping(ctx) == nil)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			c.online = (c.client.Ping(ctx) == nil)
+		}()
 	}
+	wg.Wait()
 }
 
 func pushMessage(ctx context.Context, channel *sChannel, filename string, payload []byte) error {

@@ -20,3 +20,8 @@ const (
 const (
 	CountMessagesPerPage = 1
 )
+
+const (
+	HeaderAuthTask  = "Auth-Task"
+	HeaderAuthToken = "Auth-Token"
+)

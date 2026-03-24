@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	fyne.io/fyne/v2 v2.7.3
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/number571/go-peer v1.7.14
 )
 

@@ -11,19 +11,91 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/number571/fuckoff-gov/internal/consts"
 	"github.com/number571/fuckoff-gov/internal/models"
+	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 )
 
 type sClient struct {
+	authToken  string
 	addr       string
+	pkHash     string
 	httpClient *http.Client
+	privKey    asymmetric.IPrivKey
 }
 
-func NewClient(addr string, httpClient *http.Client) IClient {
+func NewClient(addr string, privKey asymmetric.IPrivKey, httpClient *http.Client) IClient {
 	return &sClient{
 		addr:       addr,
+		pkHash:     privKey.GetPubKey().GetHasher().ToString(),
+		privKey:    privKey,
 		httpClient: httpClient,
 	}
+}
+
+func (p *sClient) Auth(ctx context.Context) error {
+	authTask, err := p.getAuthTask(ctx)
+	if err != nil {
+		return err
+	}
+	authToken, err := p.signAuthRandBytes(ctx, authTask)
+	if err != nil {
+		return err
+	}
+	p.authToken = authToken
+	return nil
+}
+
+func (p *sClient) getAuthTask(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf(p.addr+"/auth?pkhash=%s", url.QueryEscape(p.pkHash)),
+		nil,
+	)
+	if err != nil {
+		return "", err
+	}
+	rsp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("bad status code: %d (ping)", rsp.StatusCode)
+	}
+	authTask := rsp.Header.Get(consts.HeaderAuthTask)
+	if authTask == "" {
+		return "", errors.New("auth task is nil")
+	}
+	return authTask, nil
+}
+
+func (p *sClient) signAuthRandBytes(ctx context.Context, authTask string) (string, error) {
+	sign := p.privKey.GetDSAPrivKey().SignBytes([]byte(authTask))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf(p.addr+"/auth?pkhash=%s", url.QueryEscape(p.pkHash)),
+		bytes.NewReader(sign),
+	)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set(consts.HeaderAuthTask, authTask)
+	rsp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("bad status code: %d (ping)", rsp.StatusCode)
+	}
+	authToken := rsp.Header.Get(consts.HeaderAuthToken)
+	if authTask == "" {
+		return "", errors.New("auth task is nil")
+	}
+	return authToken, nil
 }
 
 func (p *sClient) Ping(ctx context.Context) error {
@@ -31,6 +103,7 @@ func (p *sClient) Ping(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -51,6 +124,7 @@ func (p *sClient) InitClient(ctx context.Context, clientInfo *models.ClientInfo)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -72,6 +146,7 @@ func (p *sClient) LoadClient(ctx context.Context, pkhash string) (*models.Client
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -87,16 +162,17 @@ func (p *sClient) LoadClient(ctx context.Context, pkhash string) (*models.Client
 	return clientInfo, nil
 }
 
-func (p *sClient) CountChannels(ctx context.Context, pkhash string) (uint64, error) {
+func (p *sClient) CountChannels(ctx context.Context) (uint64, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf(p.addr+"/client/channels/size?pkhash=%s", url.QueryEscape(pkhash)),
+		p.addr+"/client/channels/size",
 		nil,
 	)
 	if err != nil {
 		return 0, err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return 0, err
@@ -116,7 +192,7 @@ func (p *sClient) CountChannels(ctx context.Context, pkhash string) (uint64, err
 	return size, nil
 }
 
-func (p *sClient) ListenChannel(ctx context.Context, pkhash string, index uint64) (*models.ChannelInfo, error) {
+func (p *sClient) ListenChannel(ctx context.Context, index uint64) (*models.ChannelInfo, error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -126,12 +202,13 @@ func (p *sClient) ListenChannel(ctx context.Context, pkhash string, index uint64
 		req, err := http.NewRequestWithContext(
 			ctx,
 			http.MethodGet,
-			fmt.Sprintf(p.addr+"/client/channels/listen?pkhash=%s&index=%d", url.QueryEscape(pkhash), index),
+			fmt.Sprintf(p.addr+"/client/channels/listen?index=%d", index),
 			nil,
 		)
 		if err != nil {
 			return nil, err
 		}
+		req.Header.Set("Auth-Token", p.authToken)
 		rsp, err := p.httpClient.Do(req)
 		if err != nil {
 			return nil, err
@@ -159,10 +236,16 @@ func (p *sClient) InitChannel(ctx context.Context, channelInfo *models.ChannelIn
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.addr+"/channel/init", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		p.addr+"/channel/init",
+		bytes.NewReader(reqBody),
+	)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -183,6 +266,7 @@ func (p *sClient) LoadChannel(ctx context.Context, chanID string) (*models.Chann
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -206,10 +290,16 @@ func (p *sClient) PushMessage(ctx context.Context, messageInfo *models.MessageIn
 	if err != nil {
 		panic(err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.addr+"/channel/chat/push", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		p.addr+"/channel/chat/push",
+		bytes.NewReader(reqBody),
+	)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -230,6 +320,7 @@ func (p *sClient) LoadMessage(ctx context.Context, mhash string) (*models.Messag
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -255,6 +346,7 @@ func (p *sClient) CountMessages(ctx context.Context, chanID string) (uint64, err
 	if err != nil {
 		return 0, err
 	}
+	req.Header.Set("Auth-Token", p.authToken)
 	rsp, err := p.httpClient.Do(req)
 	if err != nil {
 		return 0, err
@@ -284,12 +376,17 @@ func (p *sClient) ListenMessage(ctx context.Context, chanID string, index uint64
 		req, err := http.NewRequestWithContext(
 			ctx,
 			http.MethodGet,
-			fmt.Sprintf(p.addr+"/channel/chat/listen?chanid=%s&index=%d", url.QueryEscape(chanID), index),
+			fmt.Sprintf(
+				p.addr+"/channel/chat/listen?chanid=%s&index=%d",
+				url.QueryEscape(chanID),
+				index,
+			),
 			nil,
 		)
 		if err != nil {
 			return nil, err
 		}
+		req.Header.Set("Auth-Token", p.authToken)
 		rsp, err := p.httpClient.Do(req)
 		if err != nil {
 			return nil, err

@@ -606,12 +606,26 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					return
 				}
 
-				if err := newConn(cert).InitClient(ctx, clientInfo); err != nil {
+				certID, err := gClient.addConnection(cert)
+				if err != nil {
 					dialog.ShowError(err, w)
 					return
 				}
 
-				gClient.addConnection(cert)
+				conn, ok := gClient.getConnectionByID(certID)
+				if !ok {
+					dialog.ShowError(errors.New("connection not found"), w)
+					return
+				}
+				if err := conn.client.InitClient(ctx, clientInfo); err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+				if err := conn.client.Auth(ctx); err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+
 				setConnectionsContent(ctx, w)
 			},
 			w,

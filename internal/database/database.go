@@ -16,68 +16,44 @@ type sDatabase struct {
 	db database.IKVDatabase
 }
 
-func OpenDatabase(path string) (IDatabase, error) {
-	db, err := database.NewKVDatabase(path)
-	if err != nil {
-		return nil, err
-	}
+func NewCommonDatabase(db database.IKVDatabase) ICommonDatabase {
 	return &sDatabase{
 		mu: &sync.RWMutex{},
 		db: db,
-	}, nil
-}
-
-func (p *sDatabase) SetLocalData(localData *models.LocalData) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	d, err := json.Marshal(localData)
-	if err != nil {
-		return err
 	}
-
-	return p.db.Set(keyLocalData(), d)
-}
-
-func (p *sDatabase) GetLocalData() (*models.LocalData, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	d, err := p.db.Get(keyLocalData())
-	if err != nil {
-		return nil, err
-	}
-	localData := &models.LocalData{}
-	if err := json.Unmarshal(d, localData); err != nil {
-		return nil, err
-	}
-	return localData, nil
 }
 
 func (p *sDatabase) SetClient(clientInfo *models.ClientInfo) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	pubKey := asymmetric.LoadPubKey(clientInfo.PubKey)
 	if pubKey == nil {
 		return errors.New("pubkey is nil")
 	}
+
 	d, err := json.Marshal(clientInfo)
 	if err != nil {
 		return err
 	}
+
 	return p.db.Set(keyClient(pubKey.GetHasher().ToString()), d)
 }
 
 func (p *sDatabase) GetClient(pkHash string) (*models.ClientInfo, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
 	d, err := p.db.Get(keyClient(pkHash))
 	if err != nil {
 		return nil, err
 	}
+
 	clientInfo := &models.ClientInfo{}
 	if err := json.Unmarshal(d, clientInfo); err != nil {
 		return nil, err
 	}
+
 	return clientInfo, nil
 }
 
@@ -125,14 +101,17 @@ func (p *sDatabase) SetChannel(channelInfo *models.ChannelInfo) error {
 func (p *sDatabase) GetChannel(chanID string) (*models.ChannelInfo, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
 	d, err := p.db.Get(keyChannel(chanID))
 	if err != nil {
 		return nil, err
 	}
+
 	channelInfo := &models.ChannelInfo{}
 	if err := json.Unmarshal(d, channelInfo); err != nil {
 		return nil, err
 	}
+
 	return channelInfo, nil
 }
 
@@ -182,17 +161,21 @@ func (p *sDatabase) GetCountChannelMessages(chanID string) (uint64, error) {
 func (p *sDatabase) GetClientChanIDByIndex(pkHash string, index uint64) (string, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
 	count, err := p.getCountClientChannels(pkHash)
 	if err != nil {
 		return "", err
 	}
+
 	if index >= count {
 		return "", errors.New("index > size")
 	}
+
 	chanID, err := p.db.Get(keyClientChannel(pkHash, index))
 	if err != nil {
 		return "", err
 	}
+
 	return string(chanID), nil
 }
 
@@ -204,13 +187,16 @@ func (p *sDatabase) GetChannelMessageHashByIndex(chanID string, index uint64) (s
 	if err != nil {
 		return "", err
 	}
+
 	if index >= count {
 		return "", errors.New("index > size")
 	}
+
 	msgHash, err := p.db.Get(keyChannelMessage(chanID, index))
 	if err != nil {
 		return "", err
 	}
+
 	return string(msgHash), nil
 }
 
@@ -256,14 +242,17 @@ func (p *sDatabase) AddChannelMessage(messageInfo *models.MessageInfo) error {
 func (p *sDatabase) GetMessage(msgHash string) (*models.MessageInfo, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
 	d, err := p.db.Get(keyMessage(msgHash))
 	if err != nil {
 		return nil, err
 	}
+
 	messageInfo := &models.MessageInfo{}
 	if err := json.Unmarshal(d, messageInfo); err != nil {
 		return nil, err
 	}
+
 	return messageInfo, nil
 }
 
