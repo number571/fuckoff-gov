@@ -204,7 +204,44 @@ func (p *sClient) mapConnectsToList() {
 	p.connects = resultConnectsList
 }
 
-func (p *sClient) isBlockedChannel(chanID string) bool {
+func (p *sClient) isBlockedParticipant(pkHash string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, ok := p.ld.BlackListParticipants[pkHash]
+	return ok
+}
+
+func (p *sClient) setBlockedParticipant(pkHash string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.ld.BlackListParticipants[pkHash] = struct{}{}
+
+	if err := gClient.db.SetLocalData(p.ld); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *sClient) unsetBlockedParticipant(pkHash string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if _, ok := p.ld.BlackListParticipants[pkHash]; !ok {
+		return nil
+	}
+	delete(p.ld.BlackListParticipants, pkHash)
+
+	if err := gClient.db.SetLocalData(p.ld); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *sClient) isDeletedChannel(chanID string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -212,7 +249,7 @@ func (p *sClient) isBlockedChannel(chanID string) bool {
 	return ok
 }
 
-func (p *sClient) setBlockedChannel(chanID string) error {
+func (p *sClient) setDeletedChannel(chanID string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

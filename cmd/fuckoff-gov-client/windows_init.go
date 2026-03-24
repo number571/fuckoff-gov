@@ -151,10 +151,10 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			return len(currentChatChannel.pkHashes)
 		},
 		func() fyne.CanvasObject {
-			templateDeleteButton := widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {})
+			templateDeleteButton := widget.NewButton("", func() {})
 			templateDeleteButton.Importance = widget.DangerImportance
 
-			templateFriendButton := widget.NewButtonWithIcon("", theme.AccountIcon(), func() {})
+			templateFriendButton := widget.NewButton("", func() {})
 			return container.New(
 				layout.NewBorderLayout(nil, nil, templateDeleteButton, nil),
 				templateDeleteButton,
@@ -165,27 +165,78 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			pkHash := currentChatChannel.pkHashes[i]
 
 			deleteButton := item.(*fyne.Container).Objects[0].(*widget.Button)
-			deleteButton.OnTapped = func() {
-				dialog.ShowConfirm(
-					"Blocking participant...",
-					"Are you sure you want to block this participant?",
-					func(ok bool) {
-						if !ok {
-							return
-						}
-						gParticipants = append(gParticipants[:i], gParticipants[i+1:]...)
-						setChatSettingsContent(w, currentChatChannel)
-					},
-					w,
-				)
+
+			if gClient.isBlockedParticipant(pkHash) {
+				deleteButton.Icon = theme.ContentClearIcon()
+				deleteButton.Importance = widget.MediumImportance
+			} else {
+				deleteButton.Icon = theme.AccountIcon()
+				deleteButton.Importance = widget.DangerImportance
+			}
+
+			if pkHash == gClient.sk.GetPubKey().GetHasher().ToString() {
+				deleteButton.Disable()
+			}
+			deleteButton.Refresh()
+
+			if gClient.isBlockedParticipant(pkHash) {
+				deleteButton.OnTapped = func() {
+					dialog.ShowConfirm(
+						"Unblocking participant...",
+						"Are you sure you want to unblock this participant?",
+						func(ok bool) {
+							if !ok {
+								return
+							}
+							if err := gClient.unsetBlockedParticipant(pkHash); err != nil {
+								dialog.ShowError(err, w)
+								return
+							}
+							deleteButton.Icon = theme.AccountIcon()
+							deleteButton.Importance = widget.DangerImportance
+							deleteButton.Refresh()
+							setChatSettingsContent(w, currentChatChannel)
+						},
+						w,
+					)
+				}
+			} else {
+				deleteButton.OnTapped = func() {
+					dialog.ShowConfirm(
+						"Blocking participant...",
+						"Are you sure you want to block this participant?",
+						func(ok bool) {
+							if !ok {
+								return
+							}
+							if err := gClient.setBlockedParticipant(pkHash); err != nil {
+								dialog.ShowError(err, w)
+								return
+							}
+							deleteButton.Icon = theme.ContentClearIcon()
+							deleteButton.Importance = widget.MediumImportance
+							deleteButton.Refresh()
+							setChatSettingsContent(w, currentChatChannel)
+						},
+						w,
+					)
+				}
 			}
 
 			friendButton := item.(*fyne.Container).Objects[1].(*widget.Button)
 			friendButton.SetText(cutHash384(pkHash))
+			friendButton.OnTapped = func() {
+				a.Clipboard().SetContent(pkHash)
+				dialog.ShowInformation(
+					"Copying a pk hash...",
+					"The pk hash has been successfully copied to the clipboard",
+					w,
+				)
+			}
 		},
 	)
 
-	deleteButton := widget.NewButtonWithIcon("Delete chat", theme.CancelIcon(), func() {
+	deleteButton := widget.NewButtonWithIcon("Delete chat", theme.DeleteIcon(), func() {
 		dialog.ShowConfirm(
 			"Deleting chat...",
 			"Are you sure you want to delete this chat?",
@@ -194,7 +245,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 				if !ok {
 					return
 				}
-				if err := gClient.setBlockedChannel(chanID); err != nil {
+				if err := gClient.setDeletedChannel(chanID); err != nil {
 					dialog.ShowError(err, w)
 					return
 				}
@@ -804,7 +855,6 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 }
 
 func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
-	// TODO: race condition!
 	chatList := widget.NewList(
 		func() int {
 			return gChannels.getLength()

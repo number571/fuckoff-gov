@@ -87,7 +87,7 @@ func runChannelsListener(ctx context.Context, w fyne.Window) {
 			fyne.Do(func() { dialog.ShowError(err, w) })
 			return
 		}
-		if gClient.isBlockedChannel(chanID) {
+		if gClient.isDeletedChannel(chanID) {
 			err := gClient.db.DelChannel(chanID)
 			if err == nil || errors.Is(err, gp_database.ErrNotFound) {
 				continue
@@ -235,7 +235,7 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 				return
 			default:
 			}
-			if gClient.isBlockedChannel(channel.chanID) {
+			if gClient.isDeletedChannel(channel.chanID) {
 				return
 			}
 			messageInfo, err := c.client.ListenMessage(ctx, channel.chanID, counter)
@@ -293,10 +293,15 @@ func runChannelsListenerOnConnection(ctx context.Context, c *sConnection) {
 			continue
 		}
 
-		if gClient.isBlockedChannel(channelInfo.ChanID) {
+		if gClient.isDeletedChannel(channelInfo.ChanID) {
 			counter++
 			continue
 		}
+		if gClient.isBlockedParticipant(channelInfo.EncList[0].PkHash) {
+			counter++
+			continue
+		}
+
 		_, err = gClient.db.GetChannel(channelInfo.ChanID)
 		if err == nil {
 			counter++

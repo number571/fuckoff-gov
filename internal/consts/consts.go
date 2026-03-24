@@ -18,7 +18,7 @@ const (
 )
 
 const (
-	CountMessagesPerPage = 1
+	CountMessagesPerPage = 25
 )
 
 const (
