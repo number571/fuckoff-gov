@@ -698,7 +698,8 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 						buf bytes.Buffer
 					)
 					imgReader := bytes.NewReader(content)
-					if filepath.Ext(filename) == "png" {
+					if filepath.Ext(filename) == ".png" {
+						filename += ".jpg"
 						img, err = png.Decode(imgReader)
 						if err != nil {
 							dialog.ShowError(err, w)

@@ -176,13 +176,15 @@ func handleClientChannelsListen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	queryParams := r.URL.Query()
+
 	pkHash, err := verifyToken(r.Header.Get(consts.HeaderAuthToken))
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	index, err := strconv.ParseUint(pkHash, 10, 64)
+	index, err := strconv.ParseUint(queryParams.Get("index"), 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return

@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"image/color"
 	"image/jpeg"
-	"image/png"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -280,7 +278,7 @@ func addMessageToChat(w fyne.Window, scrollContainer *customScroller, pkSender a
 }
 
 func isAtBottom(scroll *customScroller) bool {
-	diff := float32(400)
+	diff := float32(1200)
 	maxY := scroll.Content.MinSize().Height - scroll.Size().Height - diff
 	if maxY <= 0 {
 		return true
@@ -305,11 +303,7 @@ func getMessageAsFile(w fyne.Window, msgBody *models.MessageBody) *fyne.Containe
 		payload, err = decompressBytes(msgBody.Payload)
 	} else {
 		imgReader := bytes.NewReader(msgBody.Payload)
-		if filepath.Ext(filename) == "png" {
-			_, err = png.Decode(imgReader)
-		} else {
-			_, err = jpeg.Decode(imgReader)
-		}
+		_, err = jpeg.Decode(imgReader)
 	}
 
 	if err != nil {

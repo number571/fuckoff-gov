@@ -145,7 +145,9 @@ func (p *sClient) getConnections() []*sConnection {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	return p.connects
+	connects := make([]*sConnection, len(p.connects))
+	copy(connects, p.connects)
+	return connects
 }
 
 func (p *sClient) setNickName(nn string) error {

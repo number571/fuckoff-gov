@@ -477,8 +477,12 @@ func getClientInfo(ctx context.Context, pkHash string) (asymmetric.IPubKey, *mod
 	if !errors.Is(err, gp_database.ErrNotFound) {
 		return nil, nil, err
 	}
+	connections := gClient.getConnections()
+	if len(connections) == 0 {
+		return nil, nil, errors.New("no connections")
+	}
 	var lastErr error
-	for _, c := range gClient.getConnections() {
+	for _, c := range connections {
 		clientInfo, err := c.client.LoadClient(ctx, pkHash)
 		if err != nil {
 			lastErr = err
