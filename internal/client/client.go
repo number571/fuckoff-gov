@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 
 	"github.com/number571/fuckoff-gov/internal/consts"
 	"github.com/number571/fuckoff-gov/internal/models"
@@ -17,6 +18,7 @@ import (
 )
 
 type sClient struct {
+	mtx        *sync.Mutex
 	authToken  string
 	addr       string
 	pkHash     string
@@ -26,6 +28,7 @@ type sClient struct {
 
 func NewClient(addr string, privKey asymmetric.IPrivKey, httpClient *http.Client) IClient {
 	return &sClient{
+		mtx:        &sync.Mutex{},
 		addr:       addr,
 		pkHash:     privKey.GetPubKey().GetHasher().ToString(),
 		privKey:    privKey,
@@ -34,6 +37,13 @@ func NewClient(addr string, privKey asymmetric.IPrivKey, httpClient *http.Client
 }
 
 func (p *sClient) Auth(ctx context.Context) error {
+	if ok := p.mtx.TryLock(); !ok {
+		return ErrInProcess
+	}
+	defer p.mtx.Unlock()
+	if p.authToken != "" {
+		return nil
+	}
 	authTask, err := p.getAuthTask(ctx)
 	if err != nil {
 		return err
@@ -44,10 +54,6 @@ func (p *sClient) Auth(ctx context.Context) error {
 	}
 	p.authToken = authToken
 	return nil
-}
-
-func (p *sClient) HasAuth(_ context.Context) bool {
-	return p.authToken != ""
 }
 
 func (p *sClient) getAuthTask(ctx context.Context) (string, error) {

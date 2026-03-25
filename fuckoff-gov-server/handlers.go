@@ -94,7 +94,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleClientInit(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 20<<10) // 20KiB
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10) // 16KiB
 
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

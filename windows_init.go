@@ -653,6 +653,7 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					dialog.ShowError(errors.New("connection not found"), w)
 					return
 				}
+
 				if err := conn.client.InitClient(ctx, clientInfo); err != nil {
 					dialog.ShowError(err, w)
 					return

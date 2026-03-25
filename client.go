@@ -338,7 +338,7 @@ func newConn(cert *x509.Certificate, privKey asymmetric.IPrivKey) client.IClient
 		fmt.Sprintf("https://%s:%s", getAddrFromCert(cert), cert.Subject.Organization[0]),
 		privKey,
 		&http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					RootCAs: caCertPool,

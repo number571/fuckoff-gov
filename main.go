@@ -55,7 +55,7 @@ func main() {
 	chatSearchContainer = initWindowChatSearch(ctx, a, w)
 	connectionsContainer = initWindowConnections(ctx, a, w)
 
-	fyne.Do(func() { printLog(logInfo, "app is started 5") })
+	fyne.Do(func() { printLog(logInfo, "app is started") })
 
 	go runClientInitializer(ctx, w)
 	go runChannelsListener(ctx, w)
@@ -365,17 +365,34 @@ func initRemoteChannel(ctx context.Context, channelInfo *models.ChannelInfo) err
 		go func() {
 			defer wg.Done()
 
-			if !c.client.HasAuth(ctx) {
-				select {
-				case <-ctx.Done():
-				case <-time.After(time.Second):
+			for {
+				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+
+				err := c.client.Auth(ctx)
+				if err == nil {
+					break
 				}
+
+				if errors.Is(err, client.ErrInProcess) {
+					select {
+					case <-ctx.Done():
+					case <-time.After(time.Second):
+					}
+					continue
+				}
+
+				mtx.Lock()
+				errorsList = append(errorsList, err)
+				mtx.Unlock()
+				return
 			}
 
 			if err := c.client.InitChannel(ctx, channelInfo); err != nil {
 				mtx.Lock()
 				errorsList = append(errorsList, err)
 				mtx.Unlock()
+				return
 			}
 
 			fyne.Do(func() {
