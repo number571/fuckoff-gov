@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -31,12 +32,13 @@ var (
 )
 
 func main() {
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	a := app.NewWithID("fuckoff.gov.chat")
 
-	gClient = newLocalDataClient(fmt.Sprintf(a.Storage().RootURI().Path(), "client.db"))
+	gClient = newLocalDataClient(filepath.Join(a.Storage().RootURI().Path(), "client.db"))
 	if err := gClient.init(); err != nil {
 		panic(err)
 	}
@@ -52,6 +54,8 @@ func main() {
 	chatSearchContainer = initWindowChatSearch(ctx, a, w)
 	connectionsContainer = initWindowConnections(ctx, a, w)
 
+	fyne.Do(func() { printLog(logInfo, "app is started 1") })
+
 	go runClientInitializer(ctx, w)
 	go runChannelsListener(ctx, w)
 
@@ -65,6 +69,7 @@ func runClientInitializer(ctx context.Context, w fyne.Window) {
 		fyne.Do(func() { dialog.ShowError(err, w) })
 		return
 	}
+	fyne.Do(func() { printLog(logInfo, "client is locally initialized!") })
 	initRemoteClient(ctx, clientInfo)
 }
 
@@ -436,6 +441,7 @@ func initRemoteClient(ctx context.Context, clientInfo *models.ClientInfo) {
 						timeSleep(ctx, time.Minute)
 						return
 					}
+					fyne.Do(func() { printLog(logInfo, fmt.Sprintf("client is remotely initialized (%s)", c.id)) })
 					break
 				}
 			}()

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
@@ -32,11 +33,11 @@ func printLog(t logType, msg interface{}) {
 	prefix := ""
 	switch t {
 	case logInfo:
-		prefix = "[INFO]"
+		prefix = "INFO"
 	case logWarn:
-		prefix = "[WARN]"
+		prefix = "WARN"
 	case logErro:
-		prefix = "[ERRO]"
+		prefix = "ERRO"
 	}
 
 	smsg := ""
@@ -48,11 +49,14 @@ func printLog(t logType, msg interface{}) {
 	}
 
 	smsg = strings.ReplaceAll(smsg, "\n", ";")
-	logList = append(logList, fmt.Sprintf("%s: %s", prefix, smsg))
+
+	timeNow := time.Now().Format(time.DateTime)
+	logList = append(logList, fmt.Sprintf("[%s] (%s) %s", prefix, timeNow, smsg))
 
 	if scrollLoggerLabel == nil {
 		return
 	}
+
 	scrollLoggerLabel.Content.(*fyne.Container).Objects[1].(*widget.Label).SetText(strings.Join(logList, "\n"))
 	scrollLoggerLabel.ScrollToBottom()
 }

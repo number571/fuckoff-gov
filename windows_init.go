@@ -322,7 +322,7 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 
 	inputNameEntry = widget.NewEntry()
 	inputNameEntry.SetText(gClient.getNickName())
-	inputNameEntry.OnChanged = func(s string) {
+	inputNameEntry.OnSubmitted = func(s string) {
 		if len(s) > consts.MaxNickNameSize {
 			dialog.ShowError(fmt.Errorf("nickname size > max(%d)", consts.MaxNickNameSize), w)
 			inputNameEntry.SetText(gClient.getNickName())
@@ -579,6 +579,7 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 
 			if c.online {
 				buttonName.Importance = widget.SuccessImportance
+				buttonName.Refresh()
 			}
 
 			buttonName.OnTapped = func() {
@@ -908,17 +909,14 @@ func newCustomScroller(content fyne.CanvasObject, startIndexReader *uint64, w fy
 	s.messages = make(map[string]struct{}, 4096)
 	s.w = w
 	s.ExtendBaseWidget(s)
-	return s
-}
+	s.OnScrolled = func(p fyne.Position) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
-// Scrolled is called whenever the scroll position changes
-func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+		if s.Offset.Y > 0 {
+			return
+		}
 
-	s.Scroll.Scrolled(ev)
-
-	if s.Offset.Y <= 0 {
 		readUntil := int64(-1)
 		if *s.startIndexReader > consts.CountMessagesPerPage {
 			readUntil = int64(*s.startIndexReader - consts.CountMessagesPerPage)
@@ -975,6 +973,7 @@ func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
 			fyne.Do(func() { addMessageToChat(s.w, s, pubKey, msgBody, true) })
 		}
 	}
+	return s
 }
 
 func cutHash384(pkHash string) string {

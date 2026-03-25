@@ -7,8 +7,7 @@ import (
 
 func main() {
 	http.HandleFunc("/apk", func(w http.ResponseWriter, r *http.Request) {
-		filePath := "./test-client/fyne-cross/dist/android-arm64/test-client.apk"
-		// filePath := "./fyne-cross/dist/android-arm64/fuckoff-gov.apk"
+		filePath := "./fyne-cross/dist/android-arm64/fuckoff-gov.apk"
 		fileName := "test-client.apk"
 
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
