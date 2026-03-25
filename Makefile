@@ -1,9 +1,8 @@
-.PHONY: default install-deps build clean
-default: build 
+.PHONY: default install-deps build-client clean
+default: clean build-client build-server 
 install-deps:
 	go install github.com/fyne-io/fyne-cross@latest
-build:
-	mkdir -p bin
+build-client:
 	for arch in amd64 arm64; \
 	do \
 		for platform in linux windows android; \
@@ -21,5 +20,25 @@ build:
 			fi; \
 		done; \
 	done;
+build-server:
+	for app in \
+		fog-server; \
+	do \
+		for arch in amd64 arm64; \
+		do \
+			for platform in linux windows; \
+			do \
+				echo "build $${arch}_$${platform}"; \
+				if [[ $$platform == "windows" ]] \
+				then \
+					CGO_ENABLED=0 GOOS=$${platform} GOARCH=$${arch} go build -o ./bin/$${app}_$${arch}_$${platform}.exe ./$${app}; \
+				else \
+					CGO_ENABLED=0 GOOS=$${platform} GOARCH=$${arch} go build -o ./bin/$${app}_$${arch}_$${platform} ./$${app}; \
+				fi; \
+			done; \
+		done; \
+	done;
 clean:
+	rm -rf ./bin
+	mkdir -p ./bin
 	rm -f *.pem *.db
