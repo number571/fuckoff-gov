@@ -416,13 +416,17 @@ func initWindowAddChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne.
 	inputPkHashEntry.SetPlaceHolder("Type a pkhash...")
 
 	inputPkHashEntry.OnSubmitted = func(s string) {
+		defer w.Canvas().Unfocus()
 		defer inputPkHashEntry.SetText("")
+
 		pkHash := inputPkHashEntry.Text
 		if pkHash == "" || len(pkHash) != (hashing.CHasherSize<<1) {
 			dialog.ShowError(errors.New("invalid pkhash"), w)
 			return
 		}
+
 		gParticipants = append(gParticipants, pkHash)
+		setAddChannelContent(w)
 	}
 
 	participantsList := widget.NewList(
@@ -470,6 +474,8 @@ func initWindowAddChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne.
 			"Create channel",
 			"It may take several minutes to create a channel...",
 			func(ok bool) {
+				defer w.Canvas().Unfocus()
+
 				if !ok {
 					return
 				}

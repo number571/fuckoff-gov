@@ -3,12 +3,14 @@ package main
 import (
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/number571/go-peer/pkg/crypto/asymmetric"
 )
 
 type sChannel struct {
 	isFavorite bool
+	timeAdd    time.Time
 	chanID     string
 	key        []byte
 	aliasName  string
@@ -30,19 +32,11 @@ func newChannelsList() *sChannelsList {
 	}
 }
 
-func (p *sChannelsList) sortByFavorites() {
+func (p *sChannelsList) sortChannels() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	slices.SortFunc(p.l, func(a, b *sChannel) int {
-		if !a.isFavorite && b.isFavorite {
-			return 1
-		}
-		if a.isFavorite && !b.isFavorite {
-			return -1
-		}
-		return 0
-	})
+	p._sortChannels()
 }
 
 func (p *sChannelsList) addChannel(ch *sChannel) bool {
@@ -54,11 +48,8 @@ func (p *sChannelsList) addChannel(ch *sChannel) bool {
 	}
 	p.m[ch.chanID] = struct{}{}
 
-	if ch.isFavorite {
-		p.l = append([]*sChannel{ch}, p.l...)
-	} else {
-		p.l = append(p.l, ch)
-	}
+	p.l = append(p.l, ch)
+	p._sortChannels()
 
 	return true
 }
@@ -95,4 +86,33 @@ func (p *sChannelsList) getLength() int {
 	defer p.mu.RUnlock()
 
 	return len(p.l)
+}
+
+func (p *sChannelsList) _sortChannels() {
+	p._sortByTimeAdd()
+	p._sortByFavorites()
+}
+
+func (p *sChannelsList) _sortByTimeAdd() {
+	slices.SortFunc(p.l, func(a, b *sChannel) int {
+		if a.timeAdd.After(b.timeAdd) {
+			return 1
+		}
+		if a.timeAdd.Before(b.timeAdd) {
+			return -1
+		}
+		return 0
+	})
+}
+
+func (p *sChannelsList) _sortByFavorites() {
+	slices.SortFunc(p.l, func(a, b *sChannel) int {
+		if !a.isFavorite && b.isFavorite {
+			return 1
+		}
+		if a.isFavorite && !b.isFavorite {
+			return -1
+		}
+		return 0
+	})
 }

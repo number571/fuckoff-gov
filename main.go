@@ -446,6 +446,7 @@ func addChannelIntoList(ctx context.Context, channelInfo *models.ChannelInfo) er
 
 	gClient.channels.addChannel(&sChannel{
 		isFavorite: gClient.isFavoriteChannel(channelInfo.ChanID),
+		timeAdd:    time.Now(),
 		chanID:     channelInfo.ChanID,
 		key:        key,
 		aliasName:  name,
