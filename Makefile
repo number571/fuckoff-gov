@@ -13,6 +13,9 @@ build:
 			if [[ $$platform == "windows" ]] \
 			then \
 				cp fyne-cross/bin/$${platform}-$${arch}/fuckoff-gov.exe ./bin/fuckoff-gov_$${arch}_$${platform}.exe; \
+			elif [[ $$platform == "android" ]] \
+			then \
+				cp fyne-cross/dist/$${platform}-$${arch}/fuckoff-gov.apk ./bin/fuckoff-gov_$${arch}_$${platform}.apk; \
 			else \
 				cp fyne-cross/bin/$${platform}-$${arch}/fuckoff-gov ./bin/fuckoff-gov_$${arch}_$${platform}; \
 			fi; \

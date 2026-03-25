@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"flag"
 	"log"
 	"math/big"
 	"net"
@@ -20,11 +21,6 @@ import (
 )
 
 var (
-	externalAddr string
-	listenPort   string
-)
-
-var (
 	db serverside.IServerDatabase
 	sk []byte
 )
@@ -32,20 +28,28 @@ var (
 var (
 	certFile = "cert.pem"
 	keyFile  = "key.pem"
-	serverDB = "server.db"
+)
+
+var (
+	certFilePath string
+	keyFilePath  string
+	databasePath string
+	externalAddr string
+	listenPort   string
 )
 
 func init() {
-	if len(os.Args) < 3 {
-		log.Fatal("usage: fuckoff-gov-server <external-address> <listen-port>")
-		return
-	}
+	flag.StringVar(&certFilePath, "cert", "cert.pem", "set path to certificate")
+	flag.StringVar(&keyFilePath, "key", "key.pem", "set path to private key")
+	flag.StringVar(&databasePath, "database", "server.db", "set path to database file")
+	flag.StringVar(&externalAddr, "external-addr", "127.0.0.1", "set external address (domain or ip)")
+	flag.StringVar(&listenPort, "listen-port", "9999", "set listening port of service")
+	flag.Parse()
+}
 
-	externalAddr = os.Args[1]
-	listenPort = os.Args[2]
-
+func init() {
 	var err error
-	db, err = serverside.OpenServerDatabase(serverDB)
+	db, err = serverside.OpenServerDatabase(databasePath)
 	if err != nil {
 		panic(err)
 	}

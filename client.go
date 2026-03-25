@@ -24,6 +24,7 @@ import (
 )
 
 type sClient struct {
+	muInit   *sync.Mutex
 	mu       *sync.RWMutex
 	path     string
 	db       clientside.IClientDatabase
@@ -37,6 +38,7 @@ type sClient struct {
 
 func newLocalDataClient(path string) *sClient {
 	return &sClient{
+		muInit:   &sync.Mutex{},
 		mu:       &sync.RWMutex{},
 		path:     path,
 		channels: newChannelsList(),

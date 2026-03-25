@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"flag"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -32,13 +33,20 @@ var (
 	connectionsContainer  = new(fyne.Container)
 )
 
+var databasePath string
+
+func init() {
+	flag.StringVar(&databasePath, "database", "client.db", "set path to database file")
+	flag.Parse()
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	a := app.NewWithID("fuckoff.gov.chat")
 
-	gClient = newLocalDataClient(filepath.Join(a.Storage().RootURI().Path(), "client.db"))
+	gClient = newLocalDataClient(filepath.Join(a.Storage().RootURI().Path(), databasePath))
 	if err := gClient.init(); err != nil {
 		panic(err)
 	}
@@ -457,6 +465,11 @@ func addChannelIntoList(ctx context.Context, channelInfo *models.ChannelInfo) er
 }
 
 func initLocalClient() (*models.ClientInfo, error) {
+	if ok := gClient.muInit.TryLock(); !ok {
+		return nil, errors.New("wait until the client is initialized")
+	}
+	defer gClient.muInit.Unlock()
+
 	pkHash := gClient.sk.GetPubKey().GetHasher().ToString()
 	clientInfo, err := gClient.db.GetClient(pkHash)
 	if err == nil {

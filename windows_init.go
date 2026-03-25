@@ -324,11 +324,14 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 	inputNameEntry = widget.NewEntry()
 	inputNameEntry.SetText(gClient.getNickName())
 	inputNameEntry.OnSubmitted = func(s string) {
+		defer w.Canvas().Unfocus()
+
 		if len(s) > consts.MaxNickNameSize {
 			dialog.ShowError(fmt.Errorf("nickname size > max(%d)", consts.MaxNickNameSize), w)
 			inputNameEntry.SetText(gClient.getNickName())
 			return
 		}
+
 		if err := gClient.setNickName(s); err != nil {
 			printLog(logErro, err)
 		}
