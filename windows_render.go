@@ -394,7 +394,7 @@ func timeSleep(ctx context.Context, n time.Duration) {
 }
 
 func fileIsImage(filename string) bool {
-	imageExt := []string{".png", ".jpg", ".jpeg"}
+	imageExt := []string{".png", ".webp", ".jpg", ".jpeg"}
 	for _, v := range imageExt {
 		if strings.HasSuffix(filename, v) {
 			return true

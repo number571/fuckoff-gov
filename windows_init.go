@@ -25,6 +25,7 @@ import (
 	"github.com/number571/fuckoff-gov/internal/consts"
 	"github.com/number571/fuckoff-gov/internal/models"
 	"github.com/number571/go-peer/pkg/crypto/hashing"
+	"golang.org/x/image/webp"
 )
 
 func initWindowChatSearch(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
@@ -733,20 +734,29 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 						buf bytes.Buffer
 					)
 					imgReader := bytes.NewReader(content)
-					if filepath.Ext(filename) == ".png" {
-						filename += ".jpg"
+					addExtension := ".jpg"
+					switch filepath.Ext(filename) {
+					case ".png":
 						img, err = png.Decode(imgReader)
 						if err != nil {
 							dialog.ShowError(err, w)
 							return
 						}
-					} else {
+					case ".webp":
+						img, err = webp.Decode(imgReader)
+						if err != nil {
+							dialog.ShowError(err, w)
+							return
+						}
+					default:
+						addExtension = ""
 						img, err = jpeg.Decode(imgReader)
 						if err != nil {
 							dialog.ShowError(err, w)
 							return
 						}
 					}
+					filename += addExtension
 					if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 25}); err != nil {
 						dialog.ShowError(err, w)
 						return

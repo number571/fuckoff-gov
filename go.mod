@@ -6,6 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/number571/go-peer v1.7.14
+	golang.org/x/image v0.24.0
 )
 
 require (
@@ -38,7 +39,6 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	go.etcd.io/bbolt v1.3.5 // indirect
-	golang.org/x/image v0.24.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect

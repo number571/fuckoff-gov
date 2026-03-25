@@ -67,7 +67,7 @@ func (p *ChannelInfo) Validate(workSize uint64, pubKey asymmetric.IPubKey) bool 
 
 type MessageInfo struct {
 	ChanID string `json:"chanid"`
-	PkHash string `json:"pkhash"` // TODO: pkHash into GetHash?
+	PkHash string `json:"pkhash"`
 	EncMsg []byte `json:"encmsg"`
 	Sign   []byte `json:"sign"`
 	Proof  uint64 `json:"proof"`
