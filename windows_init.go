@@ -40,90 +40,76 @@ func initWindowChatSearch(ctx context.Context, a fyne.App, w fyne.Window) *fyne.
 	inputChatSearchEntry = widget.NewEntry()
 	inputChatSearchEntry.SetPlaceHolder("Type a string...")
 
-	sendButton := widget.NewButtonWithIcon(
-		"",
-		theme.SearchIcon(),
-		func() {
-			if inputChatSearchEntry.Text == "" {
-				return
+	inputChatSearchEntry.OnSubmitted = func(s string) {
+		if inputChatSearchEntry.Text == "" {
+			return
+		}
+
+		text := []byte(inputChatSearchEntry.Text)
+		filter := func(mb *models.MessageBody) bool {
+			if mb.Filename != "" {
+				return false
 			}
+			return bytes.Contains(mb.Payload, text)
+		}
 
-			text := []byte(inputChatSearchEntry.Text)
-			filter := func(mb *models.MessageBody) bool {
-				if mb.Filename != "" {
-					return false
-				}
-				return bytes.Contains(mb.Payload, text)
+		setChatSearchContent(w, currentChatChannel)
+
+		counter, err := gClient.db.GetCountChannelMessages(currentChatChannel.chanID)
+		if err != nil {
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
+
+		readCount := 0
+		index := int64(counter) - 1
+		for {
+			if index < 0 || readCount == consts.CountMessagesPerPage {
+				break
 			}
-
-			setChatSearchContent(w, currentChatChannel)
-
-			counter, err := gClient.db.GetCountChannelMessages(currentChatChannel.chanID)
+			msgHash, err := gClient.db.GetChannelMessageHashByIndex(currentChatChannel.chanID, uint64(index))
 			if err != nil {
 				fyne.Do(func() { dialog.ShowError(err, w) })
 				return
 			}
-
-			readCount := 0
-			index := int64(counter) - 1
-			for {
-				if index < 0 || readCount == consts.CountMessagesPerPage {
-					break
-				}
-				msgHash, err := gClient.db.GetChannelMessageHashByIndex(currentChatChannel.chanID, uint64(index))
-				if err != nil {
-					fyne.Do(func() { dialog.ShowError(err, w) })
-					return
-				}
-				messageInfo, err := gClient.db.GetMessage(msgHash)
-				if err != nil {
-					fyne.Do(func() { dialog.ShowError(err, w) })
-					return
-				}
-				pubKey, ok := currentChatChannel.pubKeysMap[messageInfo.PkHash]
-				if !ok {
-					fyne.Do(func() { dialog.ShowError(err, w) })
-					return
-				}
-				msgBody, err := gClient.decoder.MessageInfo(messageInfo, pubKey, currentChatChannel.pkHashes, currentChatChannel.key)
-				if err != nil {
-					fyne.Do(func() { dialog.ShowError(err, w) })
-					return
-				}
-				index--
-				if !filter(msgBody) {
-					continue
-				}
-				readCount++
-				fyne.Do(func() { addMessageToChat(w, scrollSearchContainer, pubKey, msgBody, true) })
+			messageInfo, err := gClient.db.GetMessage(msgHash)
+			if err != nil {
+				fyne.Do(func() { dialog.ShowError(err, w) })
+				return
 			}
-
-			if index <= 0 {
-				startSearchIndexReader = 0
-			} else {
-				startSearchIndexReader = uint64(index)
+			pubKey, ok := currentChatChannel.pubKeysMap[messageInfo.PkHash]
+			if !ok {
+				fyne.Do(func() { dialog.ShowError(err, w) })
+				return
 			}
+			msgBody, err := gClient.decoder.MessageInfo(messageInfo, pubKey, currentChatChannel.pkHashes, currentChatChannel.key)
+			if err != nil {
+				fyne.Do(func() { dialog.ShowError(err, w) })
+				return
+			}
+			index--
+			if !filter(msgBody) {
+				continue
+			}
+			readCount++
+			fyne.Do(func() { addMessageToChat(w, scrollSearchContainer, pubKey, msgBody, true) })
+		}
 
-			scrollSearchContainer.filter = filter
-			scrollSearchContainer.ScrollToBottom()
-		},
-	)
+		if index <= 0 {
+			startSearchIndexReader = 0
+		} else {
+			startSearchIndexReader = uint64(index)
+		}
 
-	inputChatSearchEntry.OnSubmitted = func(s string) {
-		sendButton.Tapped(nil)
+		scrollSearchContainer.filter = filter
+		scrollSearchContainer.ScrollToBottom()
 	}
 
-	inputEntrySendButton := container.New(
-		layout.NewBorderLayout(nil, nil, nil, sendButton),
-		inputChatSearchEntry,
-		sendButton,
-	)
-
 	content := container.New(
-		layout.NewBorderLayout(header, inputEntrySendButton, nil, nil),
+		layout.NewBorderLayout(header, inputChatSearchEntry, nil, nil),
 		header,
 		scrollSearchContainer,
-		inputEntrySendButton,
+		inputChatSearchEntry,
 	)
 
 	minSizeTarget := canvas.NewRectangle(color.Transparent)
@@ -316,8 +302,8 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 		pubKeyButton,
 	)
 
-	versionGrid := container.NewGridWithColumns(
-		2,
+	versionGrid := container.New(
+		&ratioLayout{ratios: []float32{0.2, 0.8}},
 		widget.NewLabel("Version"),
 		widget.NewLabel(consts.Version),
 	)
@@ -328,8 +314,8 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 		versionGrid,
 	)
 
-	pkHashGrid := container.NewGridWithColumns(
-		2,
+	pkHashGrid := container.New(
+		&ratioLayout{ratios: []float32{0.2, 0.8}},
 		widget.NewLabel("PkHash"),
 		coloredPubKeyButtonContainer,
 	)
@@ -347,8 +333,8 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 		}
 	}
 
-	nicknameGrid := container.NewGridWithColumns(
-		2,
+	nicknameGrid := container.New(
+		&ratioLayout{ratios: []float32{0.2, 0.8}},
 		widget.NewLabel("Name"),
 		inputNameEntry,
 	)
@@ -364,8 +350,8 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 		gridOfCommonInfo,
 	)
 
-	hyperlinkToAuthorWithLabel := container.NewGridWithColumns(
-		2,
+	hyperlinkToAuthorWithLabel := container.New(
+		&ratioLayout{ratios: []float32{0.2, 0.8}},
 		widget.NewLabel("Author"),
 		widget.NewHyperlink("github.com/number571", func() *url.URL {
 			urlObj, _ := url.Parse("https://github.com/number571")
@@ -373,8 +359,8 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 		}()),
 	)
 
-	hyperlinkToProjectWithLabel := container.NewGridWithColumns(
-		2,
+	hyperlinkToProjectWithLabel := container.New(
+		&ratioLayout{ratios: []float32{0.2, 0.8}},
 		widget.NewLabel("Project"),
 		widget.NewHyperlink("github.com/number571/fuckoff-gov", func() *url.URL {
 			urlObj, _ := url.Parse("https://github.com/number571/fuckoff-gov")
@@ -428,18 +414,14 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 	inputPkHashEntry = widget.NewEntry()
 	inputPkHashEntry.SetPlaceHolder("Type a pkhash...")
 
-	sendButtonAddParticipant := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+	inputPkHashEntry.OnSubmitted = func(s string) {
+		defer inputPkHashEntry.SetText("")
 		pkHash := inputPkHashEntry.Text
 		if pkHash == "" || len(pkHash) != (hashing.CHasherSize<<1) {
 			dialog.ShowError(errors.New("invalid pkhash"), w)
 			return
 		}
 		gParticipants = append(gParticipants, pkHash)
-		setEditChannelsContent(w)
-	})
-
-	inputPkHashEntry.OnSubmitted = func(s string) {
-		sendButtonAddParticipant.Tapped(nil)
 	}
 
 	participantsList := widget.NewList(
@@ -482,61 +464,61 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 	inputChannelNameEntry = widget.NewEntry()
 	inputChannelNameEntry.SetPlaceHolder("Type a channel name...")
 
-	sendButtonCreateChannel := widget.NewButtonWithIcon("", theme.MailForwardIcon(), func() {
-		channelName := inputChannelNameEntry.Text
-		if channelName == "" {
-			dialog.ShowError(errors.New("invalid channel name"), w)
-			return
-		}
+	inputChannelNameEntry.OnSubmitted = func(s string) {
+		dialog.ShowConfirm("New channel", "Confirm creating channel...", func(ok bool) {
+			if !ok {
+				return
+			}
+			defer inputChannelNameEntry.SetText("")
+			channelName := inputChannelNameEntry.Text
+			if channelName == "" {
+				dialog.ShowError(errors.New("invalid channel name"), w)
+				return
+			}
 
-		pkHashes := make([]string, len(gParticipants))
-		copy(pkHashes, gParticipants)
-		gParticipants = gParticipants[:0]
+			pkHashes := make([]string, len(gParticipants))
+			copy(pkHashes, gParticipants)
+			gParticipants = gParticipants[:0]
 
-		channelInfo, err := initLocalChannel(ctx, channelName, pkHashes)
-		if err != nil {
-			dialog.ShowError(err, w)
-			return
-		}
+			channelInfo, err := initLocalChannel(ctx, channelName, pkHashes)
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
 
-		if err := initRemoteChannel(ctx, channelInfo); err != nil {
-			dialog.ShowError(err, w)
-			return
-		}
+			if err := initRemoteChannel(ctx, channelInfo); err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
 
-		if err := gClient.db.SetChannel(channelInfo); err != nil {
-			dialog.ShowError(err, w)
-			return
-		}
+			if err := gClient.db.SetChannel(channelInfo); err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
 
-		if err := addChannelIntoList(ctx, channelInfo); err != nil {
-			dialog.ShowError(err, w)
-			return
-		}
+			if err := addChannelIntoList(ctx, channelInfo); err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
 
-		dialog.ShowInformation("New channel", "Channel success created!", w)
-		setEditChannelsContent(w)
-	})
-	sendButtonCreateChannel.Importance = widget.HighImportance
+			dialog.ShowInformation("New channel", "Channel success created!", w)
+			setEditChannelsContent(w)
+		},
+			w,
+		)
+	}
 
-	inputEntryCreateChannel := container.New(
-		layout.NewBorderLayout(nil, nil, sendButtonCreateChannel, nil),
-		sendButtonCreateChannel,
+	inputEntryCreateChannel := container.NewGridWithColumns(
+		2,
+		inputPkHashEntry,
 		inputChannelNameEntry,
 	)
 
-	inputEntryContainer := container.New(
-		layout.NewBorderLayout(inputEntryCreateChannel, nil, nil, sendButtonAddParticipant),
-		inputEntryCreateChannel,
-		inputPkHashEntry,
-		sendButtonAddParticipant,
-	)
-
 	content := container.New(
-		layout.NewBorderLayout(header, inputEntryContainer, nil, nil),
+		layout.NewBorderLayout(header, inputEntryCreateChannel, nil, nil),
 		header,
 		participantsList,
-		inputEntryContainer,
+		inputEntryCreateChannel,
 	)
 
 	minSizeTarget := canvas.NewRectangle(color.Transparent)
@@ -611,7 +593,7 @@ func initWindowConnections(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 	)
 
 	loggerLabel := widget.NewLabel("")
-	loggerLabel.Selectable = true
+	// loggerLabel.Selectable = true
 
 	coloredLogLabelContainer := container.NewStack(
 		canvas.NewRectangle(color.RGBA{R: 0, G: 0, B: 0, A: 100}),
@@ -775,14 +757,20 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					return
 				}
 				inputMessageEntry.SetText("")
-				w.Canvas().Focus(inputMessageEntry)
+				// w.Canvas().Focus(inputMessageEntry)
 			},
 			w,
 		)
 		fileOpenDialog.Show()
 	})
 
-	sendButton := widget.NewButtonWithIcon("", theme.MailSendIcon(), func() {
+	inputBar := container.New(
+		layout.NewBorderLayout(nil, nil, nil, fileButton),
+		inputMessageEntry,
+		fileButton,
+	)
+
+	inputMessageEntry.OnSubmitted = func(s string) {
 		content := inputMessageEntry.Text
 		if content == "" {
 			return
@@ -793,22 +781,6 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 		}
 		inputMessageEntry.SetText("")
 		w.Canvas().Focus(inputMessageEntry)
-	})
-
-	sendButtons := container.New(
-		layout.NewBorderLayout(nil, nil, nil, sendButton),
-		fileButton,
-		sendButton,
-	)
-
-	inputBar := container.New(
-		layout.NewBorderLayout(nil, nil, nil, sendButtons),
-		inputMessageEntry,
-		sendButtons,
-	)
-
-	inputMessageEntry.OnSubmitted = func(s string) {
-		sendButton.Tapped(nil)
 	}
 
 	searchButton := widget.NewButtonWithIcon(
@@ -1033,4 +1005,25 @@ func decompressBytes(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read decompressed data: %w", err)
 	}
 	return decompressedData, nil
+}
+
+type ratioLayout struct {
+	ratios []float32
+}
+
+func (r *ratioLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	return fyne.NewSize(100, 38)
+}
+
+func (r *ratioLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	x := float32(0)
+	for i, obj := range objects {
+		if i >= len(r.ratios) {
+			break
+		}
+		w := size.Width * r.ratios[i]
+		obj.Resize(fyne.NewSize(w, size.Height))
+		obj.Move(fyne.NewPos(x, 0))
+		x += w
+	}
 }

@@ -32,18 +32,20 @@ var (
 var (
 	certFile = "cert.pem"
 	keyFile  = "key.pem"
+	serverDB = "server.db"
 )
 
 func init() {
-	if len(os.Args) < 4 {
-		panic("args < 4")
+	if len(os.Args) < 3 {
+		log.Fatal("usage: fuckoff-gov-server <external-address> <listen-port>")
+		return
 	}
 
 	externalAddr = os.Args[1]
 	listenPort = os.Args[2]
 
 	var err error
-	db, err = serverside.OpenServerDatabase(os.Args[3])
+	db, err = serverside.OpenServerDatabase(serverDB)
 	if err != nil {
 		panic(err)
 	}

@@ -1,2 +1,4 @@
 *.db
 *.pem 
+fyne-cross
+bin

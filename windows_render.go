@@ -59,7 +59,7 @@ func setChatSearchContent(w fyne.Window, channel *sChannel) {
 	currentChatChannel = channel
 
 	w.SetContent(chatSearchContainer)
-	w.Canvas().Focus(inputChatSearchEntry)
+	// w.Canvas().Focus(inputChatSearchEntry)
 }
 
 func setChatSettingsContent(w fyne.Window, channel *sChannel) {
@@ -150,7 +150,7 @@ func setEditChannelsContent(w fyne.Window) {
 	clearAfterSwitch()
 
 	w.SetContent(addChannelsContainer)
-	w.Canvas().Focus(inputPkHashEntry)
+	// w.Canvas().Focus(inputPkHashEntry)
 }
 
 func setChatListContent(w fyne.Window) {
@@ -166,7 +166,7 @@ func setChatChanContent(ctx context.Context, w fyne.Window, channel *sChannel) {
 	go runMessagesListener(ctx, w, channel)
 
 	w.SetContent(chatChannelContainer)
-	w.Canvas().Focus(inputMessageEntry)
+	// w.Canvas().Focus(inputMessageEntry)
 
 	go func() {
 		fyne.Do(func() {
@@ -180,8 +180,8 @@ func clearAfterSwitch() {
 	startChatIndexReader = 0
 	startSearchIndexReader = 0
 	inputChatSearchEntry.SetText("")
-	inputChannelNameEntry.SetText("")
-	inputPkHashEntry.SetText("")
+	// inputChannelNameEntry.SetText("")
+	// inputPkHashEntry.SetText("")
 	inputMessageEntry.SetText("")
 	scrollChatContainer.messages = make(map[string]struct{}, 4096)
 	scrollChatContainer.Content.(*fyne.Container).RemoveAll()
@@ -202,7 +202,11 @@ func pingConnections(ctx context.Context) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 
-			c.online = (c.client.Ping(ctx) == nil)
+			err := c.client.Ping(ctx)
+			c.online = (err == nil)
+			if err != nil {
+				fyne.Do(func() { printLog(logWarn, err) })
+			}
 		}()
 	}
 	wg.Wait()
@@ -244,7 +248,7 @@ func addMessageToChat(w fyne.Window, scrollContainer *customScroller, pkSender a
 			isIncoming := (pkSenderHash != gClient.sk.GetPubKey().GetHasher().ToString())
 			msgLabel := widget.NewLabel(msgBody.Sender)
 			msgLabel.Wrapping = fyne.TextWrapWord
-			msgLabel.Selectable = true
+			// msgLabel.Selectable = true
 			msgLabel.Importance = widget.HighImportance
 			if isIncoming {
 				msgLabel.Importance = widget.DangerImportance
@@ -253,9 +257,9 @@ func addMessageToChat(w fyne.Window, scrollContainer *customScroller, pkSender a
 		}(),
 		data,
 		func() *widget.Label {
-			msgLabel := widget.NewLabel(fmt.Sprintf("%s [%s]", cutHash384(pkSenderHash), msgBody.Timestamp.Format(time.DateTime)))
+			msgLabel := widget.NewLabel(fmt.Sprintf("%s\n[%s]", cutHash384(pkSenderHash), msgBody.Timestamp.Format(time.DateTime)))
 			msgLabel.Wrapping = fyne.TextWrapWord
-			msgLabel.Selectable = true
+			// msgLabel.Selectable = true
 			msgLabel.Importance = widget.LowImportance
 			return msgLabel
 		}(),
@@ -289,7 +293,7 @@ func isAtBottom(scroll *customScroller) bool {
 func getMessageAsText(_ fyne.Window, msgBody *models.MessageBody) *widget.Label {
 	msgLabel := widget.NewLabel(string(msgBody.Payload))
 	msgLabel.Wrapping = fyne.TextWrapWord
-	msgLabel.Selectable = true
+	// msgLabel.Selectable = true
 	return msgLabel
 }
 
