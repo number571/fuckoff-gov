@@ -24,6 +24,7 @@ type IClient interface {
 
 	Ping(ctx context.Context) error
 	Auth(ctx context.Context) error
+	HasAuth(ctx context.Context) bool
 
 	InitClient(ctx context.Context, clientInfo *models.ClientInfo) error
 	LoadClient(ctx context.Context, pkhash string) (*models.ClientInfo, error)

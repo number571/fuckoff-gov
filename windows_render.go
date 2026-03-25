@@ -346,7 +346,8 @@ func getMessageAsFile(w fyne.Window, msgBody *models.MessageBody) *fyne.Containe
 
 	var data fyne.CanvasObject
 	if fileIsImage(filename) {
-		data = getFileAsImage(filename, payload)
+		widthImage := w.Content().Size().Width - (w.Content().Size().Width / 3)
+		data = getFileAsImage(filename, payload, widthImage)
 	} else {
 		data = getFileAsBinary(filename)
 	}
@@ -358,14 +359,14 @@ func getMessageAsFile(w fyne.Window, msgBody *models.MessageBody) *fyne.Containe
 	)
 }
 
-func getFileAsImage(filename string, body []byte) fyne.CanvasObject {
+func getFileAsImage(filename string, body []byte, widthImage float32) fyne.CanvasObject {
 	image := canvas.NewImageFromReader(bytes.NewReader(body), filename)
 	if image == nil {
 		return getFileAsBinary(filename)
 	}
 	image.FillMode = canvas.ImageFillContain
 	bg := canvas.NewRectangle(color.Black)
-	bg.SetMinSize(fyne.NewSize(400, 400))
+	bg.SetMinSize(fyne.NewSize(widthImage, 300))
 	return container.NewStack(bg, image)
 }
 

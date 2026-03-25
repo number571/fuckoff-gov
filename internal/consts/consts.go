@@ -5,8 +5,8 @@ const (
 )
 
 const (
-	WorkSizeClient  = 35
-	WorkSizeChannel = 24
+	WorkSizeClient  = 30
+	WorkSizeChannel = 26
 	WorkSizeMessage = 22
 )
 

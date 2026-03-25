@@ -465,10 +465,11 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 	inputChannelNameEntry.SetPlaceHolder("Type a channel name...")
 
 	inputChannelNameEntry.OnSubmitted = func(s string) {
-		dialog.ShowConfirm("New channel", "Confirm creating channel...", func(ok bool) {
+		dialog.ShowConfirm("Create channel", "It may take several minutes to create a channel...", func(ok bool) {
 			if !ok {
 				return
 			}
+
 			defer inputChannelNameEntry.SetText("")
 			channelName := inputChannelNameEntry.Text
 			if channelName == "" {
@@ -781,7 +782,7 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 			return
 		}
 		inputMessageEntry.SetText("")
-		w.Canvas().Focus(inputMessageEntry)
+		// w.Canvas().Focus(inputMessageEntry)
 	}
 
 	searchButton := widget.NewButtonWithIcon(

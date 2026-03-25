@@ -46,6 +46,10 @@ func (p *sClient) Auth(ctx context.Context) error {
 	return nil
 }
 
+func (p *sClient) HasAuth(_ context.Context) bool {
+	return p.authToken != ""
+}
+
 func (p *sClient) getAuthTask(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,

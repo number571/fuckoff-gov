@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -54,7 +55,7 @@ func main() {
 	chatSearchContainer = initWindowChatSearch(ctx, a, w)
 	connectionsContainer = initWindowConnections(ctx, a, w)
 
-	fyne.Do(func() { printLog(logInfo, "app is started 1") })
+	fyne.Do(func() { printLog(logInfo, "app is started 3") })
 
 	go runClientInitializer(ctx, w)
 	go runChannelsListener(ctx, w)
@@ -210,6 +211,18 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 		default:
 		}
 
+		channelInfo, err := gClient.db.GetChannel(channel.chanID)
+		if err != nil {
+			fyne.Do(func() { printLog(logErro, err) })
+			timeSleep(ctx, time.Second)
+			continue
+		}
+		if err := c.client.InitChannel(ctx, channelInfo); err != nil {
+			fyne.Do(func() { printLog(logErro, err) })
+			timeSleep(ctx, time.Second)
+			continue
+		}
+
 		if !gClient.inConnections(c.id) {
 			return
 		}
@@ -338,20 +351,42 @@ func runChannelsListenerOnConnection(ctx context.Context, c *sConnection) {
 
 func initRemoteChannel(ctx context.Context, channelInfo *models.ChannelInfo) error {
 	var (
-		lastErr    error
-		hasSuccess bool
+		mtx        sync.Mutex
+		errorsList = make([]error, 0, 128)
 	)
+
+	counter := 0
+
+	wg := &sync.WaitGroup{}
 	for _, c := range gClient.getConnections() {
-		if err := c.client.InitChannel(ctx, channelInfo); err != nil {
-			lastErr = err
-			continue
-		}
-		hasSuccess = true
+		counter++
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			if !c.client.HasAuth(ctx) {
+				select {
+				case <-ctx.Done():
+				case <-time.After(time.Second):
+				}
+			}
+
+			if err := c.client.InitChannel(ctx, channelInfo); err != nil {
+				mtx.Lock()
+				errorsList = append(errorsList, err)
+				mtx.Unlock()
+			}
+
+			printLog(logInfo, fmt.Sprintf("channel %s is remotely initialized (%s)", cutHash384(channelInfo.ChanID), cutHash384(c.id)))
+		}()
 	}
-	if hasSuccess {
-		return nil
+	wg.Wait()
+
+	if len(errorsList) == counter {
+		return errorsList[0]
 	}
-	return lastErr
+	return nil
 }
 
 func initLocalChannel(ctx context.Context, chanName string, pkHashes []string) (*models.ChannelInfo, error) {
@@ -441,7 +476,7 @@ func initRemoteClient(ctx context.Context, clientInfo *models.ClientInfo) {
 						timeSleep(ctx, time.Minute)
 						return
 					}
-					fyne.Do(func() { printLog(logInfo, fmt.Sprintf("client is remotely initialized (%s)", c.id)) })
+					fyne.Do(func() { printLog(logInfo, fmt.Sprintf("client is remotely initialized (%s)", cutHash384(c.id))) })
 					break
 				}
 			}()
