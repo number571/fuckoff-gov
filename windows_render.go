@@ -24,6 +24,7 @@ import (
 )
 
 var (
+	chatList              *widget.List
 	favoriteChanButton    *widget.Button
 	inputNameEntry        *widget.Entry
 	inputPkHashEntry      *widget.Entry
@@ -73,6 +74,7 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 		favoriteChanButton.Icon = theme.ConfirmIcon()
 		favoriteChanButton.Importance = widget.HighImportance
 	}
+	favoriteChanButton.Refresh()
 
 	favoriteChanButton.OnTapped = func() {
 		if currentChatChannel.isFavorite {
@@ -91,8 +93,10 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 
 					currentChatChannel.isFavorite = false
 					favoriteChanButton.Importance = widget.HighImportance
-					gClient.channels.sortByFavorites()
+					favoriteChanButton.Refresh()
+					chatList.Refresh()
 
+					gClient.channels.sortByFavorites()
 					setChatSettingsContent(w, currentChatChannel)
 				},
 				w,
@@ -113,8 +117,10 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 
 					currentChatChannel.isFavorite = true
 					favoriteChanButton.Importance = widget.MediumImportance
-					gClient.channels.sortByFavorites()
+					favoriteChanButton.Refresh()
+					chatList.Refresh()
 
+					gClient.channels.sortByFavorites()
 					setChatSettingsContent(w, currentChatChannel)
 				},
 				w,

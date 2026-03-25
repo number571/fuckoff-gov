@@ -829,7 +829,7 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 }
 
 func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
-	chatList := widget.NewList(
+	chatList = widget.NewList(
 		func() int {
 			return gClient.channels.getLength()
 		},
@@ -845,8 +845,11 @@ func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 			} else {
 				buttonName.Importance = widget.MediumImportance
 			}
+
 			buttonName.SetText(fmt.Sprintf("%s [%s]", channel.aliasName, cutHash384(channel.chanID)))
 			buttonName.OnTapped = func() { setChatChanContent(ctx, w, channel) }
+
+			buttonName.Refresh()
 		},
 	)
 

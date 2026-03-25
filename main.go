@@ -55,7 +55,7 @@ func main() {
 	chatSearchContainer = initWindowChatSearch(ctx, a, w)
 	connectionsContainer = initWindowConnections(ctx, a, w)
 
-	fyne.Do(func() { printLog(logInfo, "app is started 3") })
+	fyne.Do(func() { printLog(logInfo, "app is started 5") })
 
 	go runClientInitializer(ctx, w)
 	go runChannelsListener(ctx, w)
@@ -378,12 +378,14 @@ func initRemoteChannel(ctx context.Context, channelInfo *models.ChannelInfo) err
 				mtx.Unlock()
 			}
 
-			printLog(logInfo, fmt.Sprintf("channel %s is remotely initialized (%s)", cutHash384(channelInfo.ChanID), cutHash384(c.id)))
+			fyne.Do(func() {
+				printLog(logInfo, fmt.Sprintf("channel %s is remotely initialized (%s)", cutHash384(channelInfo.ChanID), cutHash384(c.id)))
+			})
 		}()
 	}
 	wg.Wait()
 
-	if len(errorsList) == counter {
+	if counter > 0 && len(errorsList) == counter {
 		return errorsList[0]
 	}
 	return nil

@@ -303,7 +303,7 @@ func (p *sClient) unsetFavoriteChannel(chanID string) error {
 func bytesToCert(certBytes []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(certBytes)
 	if block == nil || block.Type != "CERTIFICATE" {
-		return nil, errors.New("invalid certificate block") // TODO:
+		return nil, errors.New("invalid certificate block")
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {

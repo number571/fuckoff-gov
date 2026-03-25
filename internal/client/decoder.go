@@ -80,7 +80,7 @@ func (p *sDecoder) ChannelInfo(channelInfo *models.ChannelInfo, pubKeyCreator as
 		return nil, "", errors.New("chan id is invalid")
 	}
 
-	decName, err := crypto.DecryptAESGCM(key, channelInfo.EncName) // TODO: check graphic chars
+	decName, err := crypto.DecryptAESGCM(key, channelInfo.EncName)
 	if err != nil {
 		return nil, "", err
 	}
