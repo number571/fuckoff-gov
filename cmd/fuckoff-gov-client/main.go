@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
-	"os"
+	"fmt"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -18,10 +18,7 @@ import (
 	gp_database "github.com/number571/go-peer/pkg/storage/database"
 )
 
-var (
-	gClient   = newLocalDataClient(os.Args[1])
-	gChannels = newChannelsList()
-)
+var gClient *sClient
 
 var (
 	aboutPageContainer    = new(fyne.Container)
@@ -33,17 +30,16 @@ var (
 	connectionsContainer  = new(fyne.Container)
 )
 
-func init() {
-	if err := gClient.init(); err != nil {
-		panic(err)
-	}
-}
-
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	a := app.NewWithID("fuckoff.gov.chat")
+
+	gClient = newLocalDataClient(fmt.Sprintf(a.Storage().RootURI().Path(), "client.db"))
+	if err := gClient.init(); err != nil {
+		panic(err)
+	}
 
 	w := a.NewWindow("Fuckoff Gov Chat")
 	w.Resize(fyne.NewSize(600, 400))
@@ -172,7 +168,7 @@ func runMessagesListener(ctx context.Context, w fyne.Window, channel *sChannel) 
 			fyne.Do(func() { dialog.ShowError(err, w) })
 			return
 		}
-		msgBody, err := gClient.decoder.MessageInfo(pubKey, channel.key, messageInfo)
+		msgBody, err := gClient.decoder.MessageInfo(messageInfo, pubKey, channel.pkHashes, channel.key)
 		if err != nil {
 			fyne.Do(func() { dialog.ShowError(err, w) })
 			return
@@ -258,7 +254,7 @@ func runMessagesListenerOnConnection(ctx context.Context, w fyne.Window, channel
 				continue
 			}
 			counter++
-			msgBody, err := gClient.decoder.MessageInfo(pubKey, channel.key, messageInfo)
+			msgBody, err := gClient.decoder.MessageInfo(messageInfo, pubKey, channel.pkHashes, channel.key)
 			if err != nil {
 				fyne.Do(func() { printLog(logErro, err) })
 				continue
@@ -374,7 +370,7 @@ func addChannelIntoList(ctx context.Context, channelInfo *models.ChannelInfo) er
 	if err != nil {
 		return err
 	}
-	key, name, err := gClient.decoder.ChannelInfo(pubKey, channelInfo)
+	key, name, err := gClient.decoder.ChannelInfo(channelInfo, pubKey)
 	if err != nil {
 		return err
 	}
@@ -390,7 +386,7 @@ func addChannelIntoList(ctx context.Context, channelInfo *models.ChannelInfo) er
 		pubKeysMap[v.PkHash] = pubKey
 	}
 
-	gChannels.addChannel(&sChannel{
+	gClient.channels.addChannel(&sChannel{
 		isFavorite: gClient.isFavoriteChannel(channelInfo.ChanID),
 		chanID:     channelInfo.ChanID,
 		key:        key,
@@ -473,7 +469,7 @@ func pushRemoteMessage(ctx context.Context, messageInfo *models.MessageInfo) err
 func getClientInfo(ctx context.Context, pkHash string) (asymmetric.IPubKey, *models.ClientInfo, error) {
 	clientInfo, err := gClient.db.GetClient(pkHash)
 	if err == nil {
-		pubKey, err := gClient.decoder.ClientInfo(clientInfo)
+		pubKey, err := gClient.decoder.ClientInfo(clientInfo, pkHash)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -493,7 +489,7 @@ func getClientInfo(ctx context.Context, pkHash string) (asymmetric.IPubKey, *mod
 			lastErr = err
 			continue
 		}
-		pubKey, err := gClient.decoder.ClientInfo(clientInfo)
+		pubKey, err := gClient.decoder.ClientInfo(clientInfo, pkHash)
 		if err != nil {
 			lastErr = err
 			continue

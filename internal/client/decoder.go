@@ -26,27 +26,21 @@ func NewDecoder(workParams [3]uint64, privKey asymmetric.IPrivKey) IDecoder {
 	}
 }
 
-func (p *sDecoder) ClientInfo(clientInfo *models.ClientInfo) (asymmetric.IPubKey, error) {
+func (p *sDecoder) ClientInfo(clientInfo *models.ClientInfo, pkHash string) (asymmetric.IPubKey, error) {
 	if ok := clientInfo.Validate(p.workParams[0]); !ok {
 		return nil, errors.New("invalid client")
 	}
 	pubKey := asymmetric.LoadPubKey(clientInfo.PubKey)
-	if pubKey == nil {
-		return nil, errors.New("invalid pubkey")
+	if pubKey.GetHasher().ToString() != pkHash {
+		return nil, errors.New("invalid pkhash")
 	}
 	return pubKey, nil
 }
 
-func (p *sDecoder) ChannelInfo(pubKeyCreator asymmetric.IPubKey, channelInfo *models.ChannelInfo) ([]byte, string, error) {
+func (p *sDecoder) ChannelInfo(channelInfo *models.ChannelInfo, pubKeyCreator asymmetric.IPubKey) ([]byte, string, error) {
 	pk := p.privKey.GetPubKey()
 	pkhash := pk.GetHasher().ToString()
 
-	if len(channelInfo.EncList) == 0 {
-		return nil, "", errors.New("enc list = 0")
-	}
-	if pubKeyCreator.GetHasher().ToString() != channelInfo.EncList[0].PkHash {
-		return nil, "", errors.New("invalid pk hash creator")
-	}
 	if ok := channelInfo.Validate(p.workParams[1], pubKeyCreator); !ok {
 		return nil, "", errors.New("invalid channel")
 	}
@@ -105,9 +99,17 @@ func (p *sDecoder) ChannelInfo(pubKeyCreator asymmetric.IPubKey, channelInfo *mo
 	return key, string(decName), nil
 }
 
-func (p *sDecoder) MessageInfo(pubKeyCreator asymmetric.IPubKey, key []byte, messageInfo *models.MessageInfo) (*models.MessageBody, error) {
+func (p *sDecoder) MessageInfo(
+	messageInfo *models.MessageInfo,
+	pubKeyCreator asymmetric.IPubKey,
+	chanParticipants []string,
+	key []byte,
+) (*models.MessageBody, error) {
 	if ok := messageInfo.Validate(p.workParams[2], pubKeyCreator); !ok {
 		return nil, errors.New("invalid message")
+	}
+	if !participantInChannel(chanParticipants, pubKeyCreator) {
+		return nil, errors.New("creator not in channel")
 	}
 	decMsg, err := crypto.DecryptAESGCM(key, messageInfo.EncMsg)
 	if err != nil {
@@ -121,4 +123,14 @@ func (p *sDecoder) MessageInfo(pubKeyCreator asymmetric.IPubKey, key []byte, mes
 		return nil, errors.New("invalid message body")
 	}
 	return msgBody, nil
+}
+
+func participantInChannel(pkHashes []string, pk asymmetric.IPubKey) bool {
+	pkHash := pk.GetHasher().ToString()
+	for _, v := range pkHashes {
+		if v == pkHash {
+			return true
+		}
+	}
+	return false
 }

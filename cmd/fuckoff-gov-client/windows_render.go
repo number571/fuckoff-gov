@@ -91,7 +91,7 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 
 					currentChatChannel.isFavorite = false
 					favoriteChanButton.Importance = widget.HighImportance
-					gChannels.sortByFavorites()
+					gClient.channels.sortByFavorites()
 
 					setChatSettingsContent(w, currentChatChannel)
 				},
@@ -113,7 +113,7 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 
 					currentChatChannel.isFavorite = true
 					favoriteChanButton.Importance = widget.MediumImportance
-					gChannels.sortByFavorites()
+					gClient.channels.sortByFavorites()
 
 					setChatSettingsContent(w, currentChatChannel)
 				},

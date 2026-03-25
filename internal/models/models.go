@@ -66,7 +66,7 @@ func (p *ChannelInfo) Validate(workSize uint64, pubKey asymmetric.IPubKey) bool 
 }
 
 type MessageInfo struct {
-	ChanID string `json:"chanid"` // TODO: delete?
+	ChanID string `json:"chanid"`
 	PkHash string `json:"pkhash"` // TODO: pkHash into GetHash?
 	EncMsg []byte `json:"encmsg"`
 	Sign   []byte `json:"sign"`
@@ -74,7 +74,7 @@ type MessageInfo struct {
 }
 
 type MessageBody struct {
-	Filename  string    `json:"filename"`
+	Filename  string    `json:"filename,omitempty"`
 	Sender    string    `json:"sender"`
 	Payload   []byte    `json:"payload"`
 	Timestamp time.Time `json:"timestamp"`

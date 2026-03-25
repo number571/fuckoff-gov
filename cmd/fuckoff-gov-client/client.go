@@ -31,14 +31,15 @@ type sClient struct {
 	encoder  client.IEncoder
 	decoder  client.IDecoder
 	connects []*sConnection
-	channels []*sChannel
+	channels *sChannelsList
 	ld       *models.LocalData
 }
 
 func newLocalDataClient(path string) *sClient {
 	return &sClient{
-		mu:   &sync.RWMutex{},
-		path: path,
+		mu:       &sync.RWMutex{},
+		path:     path,
+		channels: newChannelsList(),
 	}
 }
 

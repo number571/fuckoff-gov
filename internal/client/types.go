@@ -14,9 +14,9 @@ type IEncoder interface {
 }
 
 type IDecoder interface {
-	ClientInfo(clientInfo *models.ClientInfo) (asymmetric.IPubKey, error)
-	ChannelInfo(pubKey asymmetric.IPubKey, channelInfo *models.ChannelInfo) ([]byte, string, error)
-	MessageInfo(pubKey asymmetric.IPubKey, key []byte, messageInfo *models.MessageInfo) (*models.MessageBody, error)
+	ClientInfo(clientInfo *models.ClientInfo, pkHash string) (asymmetric.IPubKey, error)
+	ChannelInfo(channelInfo *models.ChannelInfo, pubKeyCreator asymmetric.IPubKey) ([]byte, string, error)
+	MessageInfo(messageInfo *models.MessageInfo, pubKeyCreator asymmetric.IPubKey, chanParticipants []string, key []byte) (*models.MessageBody, error)
 }
 
 type IClient interface {

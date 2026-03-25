@@ -85,7 +85,7 @@ func initWindowChatSearch(ctx context.Context, a fyne.App, w fyne.Window) *fyne.
 					fyne.Do(func() { dialog.ShowError(err, w) })
 					return
 				}
-				msgBody, err := gClient.decoder.MessageInfo(pubKey, currentChatChannel.key, messageInfo)
+				msgBody, err := gClient.decoder.MessageInfo(messageInfo, pubKey, currentChatChannel.pkHashes, currentChatChannel.key)
 				if err != nil {
 					fyne.Do(func() { dialog.ShowError(err, w) })
 					return
@@ -253,7 +253,7 @@ func initWindowChatSettings(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 					dialog.ShowError(err, w)
 					return
 				}
-				gChannels.delChannel(chanID)
+				gClient.channels.delChannel(chanID)
 				setChatListContent(w)
 			},
 			w,
@@ -857,13 +857,13 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
 	chatList := widget.NewList(
 		func() int {
-			return gChannels.getLength()
+			return gClient.channels.getLength()
 		},
 		func() fyne.CanvasObject {
 			return container.NewVBox(widget.NewButton("", func() {}))
 		},
 		func(i widget.ListItemID, item fyne.CanvasObject) {
-			channel := gChannels.getChannels()[i]
+			channel := gClient.channels.getChannels()[i]
 
 			buttonName := item.(*fyne.Container).Objects[0].(*widget.Button)
 			if channel.isFavorite {
@@ -985,7 +985,7 @@ func (s *customScroller) Scrolled(ev *fyne.ScrollEvent) {
 				fyne.Do(func() { dialog.ShowError(err, s.w) })
 				return
 			}
-			msgBody, err := gClient.decoder.MessageInfo(pubKey, currentChatChannel.key, messageInfo)
+			msgBody, err := gClient.decoder.MessageInfo(messageInfo, pubKey, currentChatChannel.pkHashes, currentChatChannel.key)
 			if err != nil {
 				fyne.Do(func() { dialog.ShowError(err, s.w) })
 				return
