@@ -24,7 +24,7 @@ var gClient *sClient
 
 var (
 	aboutPageContainer    = new(fyne.Container)
-	addChannelsContainer  = new(fyne.Container)
+	addChannelContainer   = new(fyne.Container)
 	listChannelsContainer = new(fyne.Container)
 	chatChannelContainer  = new(fyne.Container)
 	chatSettingsContainer = new(fyne.Container)
@@ -33,7 +33,6 @@ var (
 )
 
 func main() {
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -48,7 +47,7 @@ func main() {
 	w.Resize(fyne.NewSize(600, 400))
 
 	aboutPageContainer = initWindowAboutPage(ctx, a, w)
-	addChannelsContainer = initWindowAddChannels(ctx, a, w)
+	addChannelContainer = initWindowAddChannel(ctx, a, w)
 	listChannelsContainer = initWindowListChannels(ctx, a, w)
 	chatChannelContainer = initWindowChatChannel(ctx, a, w)
 	chatSettingsContainer = initWindowChatSettings(ctx, a, w)
@@ -487,13 +486,17 @@ func initRemoteClient(ctx context.Context, clientInfo *models.ClientInfo) {
 				for {
 					if err := c.client.InitClient(ctx, clientInfo); err != nil {
 						fyne.Do(func() { printLog(logErro, err) })
-						timeSleep(ctx, time.Minute)
+						timeSleep(ctx, time.Second)
 						continue
 					}
 					if err := c.client.Auth(ctx); err != nil {
+						if errors.Is(err, client.ErrInProcess) {
+							timeSleep(ctx, time.Second)
+							continue
+						}
 						fyne.Do(func() { printLog(logErro, err) })
-						timeSleep(ctx, time.Minute)
-						return
+						timeSleep(ctx, time.Second)
+						continue
 					}
 					fyne.Do(func() { printLog(logInfo, fmt.Sprintf("client is remotely initialized (%s)", cutHash384(c.id))) })
 					break

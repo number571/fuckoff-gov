@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	chatList              *widget.List
+	channelsList          *widget.List
 	favoriteChanButton    *widget.Button
 	inputNameEntry        *widget.Entry
 	inputPkHashEntry      *widget.Entry
@@ -94,7 +94,7 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 					currentChatChannel.isFavorite = false
 					favoriteChanButton.Importance = widget.HighImportance
 					favoriteChanButton.Refresh()
-					chatList.Refresh()
+					channelsList.Refresh()
 
 					gClient.channels.sortByFavorites()
 					setChatSettingsContent(w, currentChatChannel)
@@ -118,7 +118,7 @@ func setChatSettingsContent(w fyne.Window, channel *sChannel) {
 					currentChatChannel.isFavorite = true
 					favoriteChanButton.Importance = widget.MediumImportance
 					favoriteChanButton.Refresh()
-					chatList.Refresh()
+					channelsList.Refresh()
 
 					gClient.channels.sortByFavorites()
 					setChatSettingsContent(w, currentChatChannel)
@@ -152,10 +152,10 @@ func setConnectionsContent(ctx context.Context, w fyne.Window) {
 	}()
 }
 
-func setEditChannelsContent(w fyne.Window) {
+func setAddChannelContent(w fyne.Window) {
 	clearAfterSwitch()
 
-	w.SetContent(addChannelsContainer)
+	w.SetContent(addChannelContainer)
 	// w.Canvas().Focus(inputPkHashEntry)
 }
 

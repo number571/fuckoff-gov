@@ -405,7 +405,7 @@ func initWindowAboutPage(_ context.Context, a fyne.App, w fyne.Window) *fyne.Con
 	return contentContainerWrapper
 }
 
-func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
+func initWindowAddChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
 	header := widget.NewButtonWithIcon(
 		"Back to main page",
 		theme.ListIcon(),
@@ -451,7 +451,7 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 							return
 						}
 						gParticipants = append(gParticipants[:i], gParticipants[i+1:]...)
-						setEditChannelsContent(w)
+						setAddChannelContent(w)
 					},
 					w,
 				)
@@ -466,46 +466,53 @@ func initWindowAddChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 	inputChannelNameEntry.SetPlaceHolder("Type a channel name...")
 
 	inputChannelNameEntry.OnSubmitted = func(s string) {
-		dialog.ShowConfirm("Create channel", "It may take several minutes to create a channel...", func(ok bool) {
-			if !ok {
-				return
-			}
+		dialog.ShowConfirm(
+			"Create channel",
+			"It may take several minutes to create a channel...",
+			func(ok bool) {
+				if !ok {
+					return
+				}
 
-			defer inputChannelNameEntry.SetText("")
-			channelName := inputChannelNameEntry.Text
-			if channelName == "" {
-				dialog.ShowError(errors.New("invalid channel name"), w)
-				return
-			}
+				defer inputChannelNameEntry.SetText("")
+				channelName := inputChannelNameEntry.Text
+				if channelName == "" {
+					dialog.ShowError(errors.New("invalid channel name"), w)
+					return
+				}
 
-			pkHashes := make([]string, len(gParticipants))
-			copy(pkHashes, gParticipants)
-			gParticipants = gParticipants[:0]
+				pkHashes := make([]string, len(gParticipants))
+				copy(pkHashes, gParticipants)
+				gParticipants = gParticipants[:0]
 
-			channelInfo, err := initLocalChannel(ctx, channelName, pkHashes)
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
+				go func() {
+					channelInfo, err := initLocalChannel(ctx, channelName, pkHashes)
+					if err != nil {
+						fyne.Do(func() { dialog.ShowError(err, w) })
+						return
+					}
 
-			if err := initRemoteChannel(ctx, channelInfo); err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
+					if err := initRemoteChannel(ctx, channelInfo); err != nil {
+						fyne.Do(func() { dialog.ShowError(err, w) })
+						return
+					}
 
-			if err := gClient.db.SetChannel(channelInfo); err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
+					if err := gClient.db.SetChannel(channelInfo); err != nil {
+						fyne.Do(func() { dialog.ShowError(err, w) })
+						return
+					}
 
-			if err := addChannelIntoList(ctx, channelInfo); err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
+					if err := addChannelIntoList(ctx, channelInfo); err != nil {
+						fyne.Do(func() { dialog.ShowError(err, w) })
+						return
+					}
 
-			dialog.ShowInformation("New channel", "Channel success created!", w)
-			setEditChannelsContent(w)
-		},
+					fyne.Do(func() { channelsList.Refresh() })
+					fyne.Do(func() { dialog.ShowInformation("New channel", "Channel success created!", w) })
+				}()
+
+				setAddChannelContent(w)
+			},
 			w,
 		)
 	}
@@ -765,11 +772,14 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 					compressedContent = buf.Bytes()
 				}
 
-				if err := pushMessage(ctx, currentChatChannel, filename, compressedContent); err != nil {
-					dialog.ShowError(err, w)
-					return
-				}
-				inputMessageEntry.SetText("")
+				go func() {
+					if err := pushMessage(ctx, currentChatChannel, filename, compressedContent); err != nil {
+						fyne.Do(func() { dialog.ShowError(err, w) })
+						return
+					}
+				}()
+
+				// inputMessageEntry.SetText("")
 				// w.Canvas().Focus(inputMessageEntry)
 			},
 			w,
@@ -788,10 +798,12 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 		if content == "" {
 			return
 		}
-		if err := pushMessage(ctx, currentChatChannel, "", []byte(content)); err != nil {
-			dialog.ShowError(err, w)
-			return
-		}
+		go func() {
+			if err := pushMessage(ctx, currentChatChannel, "", []byte(content)); err != nil {
+				fyne.Do(func() { dialog.ShowError(err, w) })
+				return
+			}
+		}()
 		inputMessageEntry.SetText("")
 		// w.Canvas().Focus(inputMessageEntry)
 	}
@@ -840,7 +852,7 @@ func initWindowChatChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne
 }
 
 func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyne.Container {
-	chatList = widget.NewList(
+	channelsList = widget.NewList(
 		func() int {
 			return gClient.channels.getLength()
 		},
@@ -864,7 +876,7 @@ func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 		},
 	)
 
-	mainContentVBox := container.NewBorder(nil, nil, nil, nil, chatList)
+	mainContentVBox := container.NewBorder(nil, nil, nil, nil, channelsList)
 	connectionsButton := widget.NewButtonWithIcon(
 		"",
 		theme.SettingsIcon(),
@@ -878,7 +890,7 @@ func initWindowListChannels(ctx context.Context, a fyne.App, w fyne.Window) *fyn
 	addChannelButton := widget.NewButtonWithIcon(
 		"Add channel",
 		theme.ComputerIcon(),
-		func() { setEditChannelsContent(w) },
+		func() { setAddChannelContent(w) },
 	)
 
 	header := container.New(
