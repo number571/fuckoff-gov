@@ -26,11 +26,6 @@ var (
 )
 
 var (
-	certFile = "cert.pem"
-	keyFile  = "key.pem"
-)
-
-var (
 	certFilePath string
 	keyFilePath  string
 	databasePath string
@@ -67,8 +62,8 @@ func init() {
 
 func tryGenerateKeyFiles(externalAddr, listenPort string) error {
 	var (
-		_, err1 = os.Stat(certFile)
-		_, err2 = os.Stat(keyFile)
+		_, err1 = os.Stat(certFilePath)
+		_, err2 = os.Stat(keyFilePath)
 	)
 	if err1 == nil && err2 == nil {
 		return nil
@@ -103,7 +98,7 @@ func tryGenerateKeyFiles(externalAddr, listenPort string) error {
 		return err
 	}
 
-	certOut, err := os.Create(certFile)
+	certOut, err := os.Create(certFilePath)
 	if err != nil {
 		return err
 	}
@@ -114,7 +109,7 @@ func tryGenerateKeyFiles(externalAddr, listenPort string) error {
 		return err
 	}
 
-	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyOut, err := os.OpenFile(keyFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
@@ -166,5 +161,5 @@ func main() {
 	}
 
 	log.Printf("Service is listening on %s port\n", listenPort)
-	log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
+	log.Fatal(server.ListenAndServeTLS(certFilePath, keyFilePath))
 }
