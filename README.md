@@ -33,7 +33,7 @@ Messenger Fuckoff-Gov protects transmitted messages from being read by third par
 
 ## Protocol
 
-### Initializing the client
+### Client initializing
 
 ```
 1. (sk, pk) <- G()          // generation private / public keys
