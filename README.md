@@ -1,8 +1,8 @@
 ![logo.png](./images/icons/logo.png)
 
-> Версия на русском: [README_ru.md](README_ru.md)
+> Fuckoff-Gov is a weakly centralized messenger with E2E management and a group of users offering to switch to Fine.
 
-Fuckoff-Gov is a weakly centralized messenger with E2E management and a group of users offering to switch to Fine.
+> Версия на русском: [README_ru.md](README_ru.md)
 
 ## Installation
 
