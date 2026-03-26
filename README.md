@@ -35,7 +35,7 @@ Messenger Fuckoff-Gov assumes that clients have cryptographic algorithms working
 
 ## Protocol
 
-### Client initializing
+### Client initialization
 
 ```
 1. (sk, pk) <- G()          // generation private / public keys
