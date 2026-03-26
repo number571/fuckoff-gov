@@ -1,4 +1,4 @@
-# Fuckoff-Gov
+![logo.png](./images/icons/logo.png)
 
 > Fuckoff-Gov — слабо централизованный мессенджер с E2E-шифрованием и групповыми чатами, написанный при помощи Go + Fyne.
 

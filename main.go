@@ -461,6 +461,8 @@ func addChannelIntoList(ctx context.Context, channelInfo *models.ChannelInfo) er
 		pkHashes:   pkHashes,
 		pubKeysMap: pubKeysMap,
 	})
+
+	fyne.Do(func() { channelsList.Refresh() })
 	return nil
 }
 

@@ -1,4 +1,4 @@
-# Fuckoff-Gov
+![logo.png](./images/icons/logo.png)
 
 > Версия на русском: [README_ru.md](README_ru.md)
 
