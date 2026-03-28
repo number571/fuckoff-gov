@@ -10,13 +10,18 @@ import (
 )
 
 const (
+	LogLevel = logDbug
+)
+
+const (
 	loggerSize = 2048
 )
 
 type logType int
 
 const (
-	logInfo logType = iota
+	logDbug logType = iota
+	logInfo
 	logWarn
 	logErro
 )
@@ -26,6 +31,10 @@ var (
 )
 
 func printLog(t logType, msg interface{}) {
+	if t < LogLevel {
+		return
+	}
+
 	if len(logList) >= loggerSize {
 		logList = logList[1:]
 	}

@@ -484,6 +484,7 @@ func initLocalClient() (*models.ClientInfo, error) {
 	if err := gClient.db.SetClient(clientInfo); err != nil {
 		return nil, err
 	}
+	// TODO: a.SendNotification(fyne.NewNotification())
 	return clientInfo, nil
 }
 

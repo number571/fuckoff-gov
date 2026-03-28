@@ -516,7 +516,10 @@ func initWindowAddChannel(ctx context.Context, a fyne.App, w fyne.Window) *fyne.
 						return
 					}
 
-					fyne.Do(func() { dialog.ShowInformation("New channel", "Channel success created!", w) })
+					fyne.Do(func() {
+						// TODO: a.SendNotification(fyne.NewNotification())
+						dialog.ShowInformation("New channel", "Channel success created!", w)
+					})
 				}()
 
 				setAddChannelContent(w)
